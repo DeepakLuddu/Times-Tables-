@@ -1,10 +1,22 @@
 import { Analytics } from '@vercel/analytics/next'
 import type { Metadata, Viewport } from 'next'
+import { Baloo_2, Nunito } from 'next/font/google'
 import './globals.css'
 
+const baloo = Baloo_2({
+  subsets: ['latin'],
+  variable: '--font-baloo',
+  weight: ['500', '600', '700', '800'],
+})
+
+const nunito = Nunito({
+  subsets: ['latin'],
+  variable: '--font-nunito',
+})
+
 export const metadata: Metadata = {
-  title: 'v0 App',
-  description: 'Created with v0',
+  title: 'Times Table Heroes',
+  description: 'A fun game to master your times tables up to 12, one star at a time!',
   generator: 'v0.app',
   icons: {
     icon: [
@@ -39,8 +51,8 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en">
-      <body className="antialiased">
+    <html lang="en" className={`bg-background ${baloo.variable} ${nunito.variable}`}>
+      <body className="font-sans antialiased">
         {children}
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
