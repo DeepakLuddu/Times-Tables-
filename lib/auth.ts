@@ -14,16 +14,33 @@ export const auth = betterAuth({
     enabled: true,
     autoSignIn: true,
   },
-  trustedOrigins: [
-    ...(process.env.V0_RUNTIME_URL ? [process.env.V0_RUNTIME_URL] : []),
-    ...(process.env.VERCEL_URL ? [`https://${process.env.VERCEL_URL}`] : []),
-    ...(process.env.VERCEL_PROJECT_PRODUCTION_URL
-      ? [`https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`]
-      : []),
-    ...(process.env.NODE_ENV === 'development'
-      ? ['http://localhost:3000', 'http://127.0.0.1:3000']
-      : []),
-  ],
+  trustedOrigins: (request) => {
+    const origins = [
+      ...(process.env.V0_RUNTIME_URL ? [process.env.V0_RUNTIME_URL] : []),
+      ...(process.env.VERCEL_URL ? [`https://${process.env.VERCEL_URL}`] : []),
+      ...(process.env.VERCEL_PROJECT_PRODUCTION_URL
+        ? [`https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`]
+        : []),
+      ...(process.env.NODE_ENV === 'development'
+        ? ['http://localhost:3000', 'http://127.0.0.1:3000']
+        : []),
+    ]
+    // Trust the request's own origin when it is a v0 / Vercel preview or
+    // sandbox host. These tunnel URLs are dynamic and not known ahead of
+    // time, so we can't hardcode them.
+    try {
+      const origin = request?.headers?.get?.('origin')
+      if (origin) {
+        const { hostname } = new URL(origin)
+        if (/(^|\.)(vercel\.run|vercel\.app)$/.test(hostname)) {
+          origins.push(origin)
+        }
+      }
+    } catch {
+      // Ignore malformed origins; fall back to the static list above.
+    }
+    return origins
+  },
   session: {
     expiresIn: 60 * 60 * 24 * 7, // 7 days
     updateAge: 60 * 60 * 24, // 1 day
