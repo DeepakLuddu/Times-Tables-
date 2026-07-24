@@ -12,7 +12,7 @@ export default function HomePage() {
           width={180}
           height={180}
           priority
-          className="drop-shadow-xl"
+          className="size-44 rounded-full border-4 border-primary/40 object-cover shadow-xl"
         />
         <h1 className="mt-2 font-display text-5xl font-bold text-primary">
           Times Dojo
