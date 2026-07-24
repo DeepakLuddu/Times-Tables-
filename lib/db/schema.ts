@@ -54,6 +54,7 @@ export const verification = pgTable("verification", {
 
 // ---- App tables (scoped per user via userId, no FK by default) ----
 
+// One row per multiplication fact (factor x multiplier) the child has practiced.
 export const factStats = pgTable("fact_stats", {
   id: serial("id").primaryKey(),
   userId: text("userId").notNull(),
@@ -65,6 +66,7 @@ export const factStats = pgTable("fact_stats", {
   updatedAt: timestamp("updatedAt").notNull().defaultNow(),
 })
 
+// One row per completed game round, used for stars and daily streaks.
 export const gameSessions = pgTable("game_sessions", {
   id: serial("id").primaryKey(),
   userId: text("userId").notNull(),
