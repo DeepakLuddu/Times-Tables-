@@ -7,6 +7,7 @@ import {
   type Mode,
   type Question,
   type TableStat,
+  beltIndex,
   computeFactStats,
   computeTableStats,
   makeQuestion,
@@ -14,9 +15,12 @@ import {
   pickWeightedFact,
 } from "@/lib/engine"
 import {
+  type BeltPromotion,
+  type ParentReport,
   type SessionSummary,
   type TroubleFact,
   allSessionSummaries,
+  parentReport,
 } from "@/lib/insights"
 import { eq } from "drizzle-orm"
 
@@ -37,7 +41,8 @@ async function loadAttempts(playerId: string): Promise<Attempt[]> {
   }))
 }
 
-// Record one answered question.
+// Record one answered question. Returns any belt promotions this answer
+// triggered for the tables involved (fuels the celebration animation).
 export async function recordAttempt(input: {
   playerId: string
   sessionId: string
@@ -45,8 +50,12 @@ export async function recordAttempt(input: {
   a: number
   b: number
   correct: boolean
-}): Promise<void> {
-  if (!input.playerId || !input.sessionId) return
+}): Promise<{ promotions: BeltPromotion[] }> {
+  if (!input.playerId || !input.sessionId) return { promotions: [] }
+
+  const before = await loadAttempts(input.playerId)
+  const beforeTables = computeTableStats(before)
+
   await db.insert(attemptsTable).values({
     playerId: input.playerId,
     sessionId: input.sessionId,
@@ -55,6 +64,27 @@ export async function recordAttempt(input: {
     factorB: input.b,
     correct: input.correct,
   })
+
+  const newAttempt: Attempt = {
+    factorA: input.a,
+    factorB: input.b,
+    correct: input.correct,
+    mode: input.mode,
+    sessionId: input.sessionId,
+    createdAt: new Date(),
+  }
+  const afterTables = computeTableStats([...before, newAttempt])
+
+  const promotions: BeltPromotion[] = []
+  const involved = input.a === input.b ? [input.a] : [input.a, input.b]
+  for (const t of involved) {
+    const b = beforeTables.get(t)
+    const a = afterTables.get(t)
+    if (b && a && beltIndex(a.belt) > beltIndex(b.belt)) {
+      promotions.push({ table: t, belt: a.belt })
+    }
+  }
+  return { promotions }
 }
 
 // Generate a batch of questions using the adaptive engine.
@@ -129,4 +159,12 @@ export async function getBeltWallData(playerId: string): Promise<BeltWallData> {
   const nextSessionFacts = sessions.length > 0 ? sessions[0].troubleFacts : []
 
   return { tables, needsPractice, sessions, nextSessionFacts }
+}
+
+// Aggregated report for the parent-facing view.
+export async function getParentReport(
+  playerId: string,
+): Promise<ParentReport> {
+  const attempts = await loadAttempts(playerId)
+  return parentReport(attempts)
 }

@@ -1,4 +1,4 @@
-import { Clock, Flame, ShieldCheck } from "lucide-react"
+import { Clock, Flame, ShieldCheck, Users } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
 
@@ -64,6 +64,14 @@ export default function HomePage() {
           </span>
         </Link>
       </div>
+
+      <Link
+        href="/parents"
+        className="mt-8 flex items-center gap-2 font-sans text-sm text-foreground/50 underline-offset-4 transition-colors hover:text-foreground hover:underline"
+      >
+        <Users className="size-4" />
+        For parents
+      </Link>
     </main>
   )
 }

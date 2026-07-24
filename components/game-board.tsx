@@ -1,10 +1,12 @@
 "use client"
 
 import { getQuestions, recordAttempt } from "@/app/actions/dojo"
+import { BeltPromotion } from "@/components/belt-promotion"
 import type { Mode, Question } from "@/lib/engine"
+import type { BeltPromotion as BeltPromotionData } from "@/lib/insights"
 import { getPlayerId, newSessionId } from "@/lib/player"
 import { cn } from "@/lib/utils"
-import { ArrowRight, Flame, House } from "lucide-react"
+import { Flame, House } from "lucide-react"
 import Link from "next/link"
 import { useCallback, useEffect, useRef, useState } from "react"
 
@@ -29,6 +31,10 @@ export function GameBoard({ mode }: { mode: Mode }) {
   const [timeLeft, setTimeLeft] = useState(SPRINT_SECONDS)
   const [finished, setFinished] = useState(false)
 
+  // Belt promotion celebration queue.
+  const [promoQueue, setPromoQueue] = useState<BeltPromotionData[]>([])
+  const promotion = promoQueue[0] ?? null
+
   const fetchingRef = useRef(false)
   const startedRef = useRef(false)
 
@@ -43,6 +49,7 @@ export function GameBoard({ mode }: { mode: Mode }) {
     setCorrectCount(0)
     setTimeLeft(SPRINT_SECONDS)
     setFinished(false)
+    setPromoQueue([])
     const first = await getQuestions(pid, BATCH, true)
     setQuestions(first)
   }, [])
@@ -56,16 +63,18 @@ export function GameBoard({ mode }: { mode: Mode }) {
     }
   }, [startSitting])
 
-  // Sprint countdown starts once the first question is on screen.
+  // Sprint countdown starts once the first question is on screen. It pauses
+  // while a belt promotion celebration is on screen so it stays fair.
   useEffect(() => {
-    if (mode !== "sprint" || finished || questions.length === 0) return
+    if (mode !== "sprint" || finished || questions.length === 0 || promotion)
+      return
     if (timeLeft <= 0) {
       setFinished(true)
       return
     }
     const t = setTimeout(() => setTimeLeft((s) => s - 1), 1000)
     return () => clearTimeout(t)
-  }, [mode, finished, timeLeft, questions.length])
+  }, [mode, finished, timeLeft, questions.length, promotion])
 
   const current = questions[idx]
 
@@ -97,6 +106,10 @@ export function GameBoard({ mode }: { mode: Mode }) {
       a: current.a,
       b: current.b,
       correct: isCorrect,
+    }).then((res) => {
+      if (res.promotions.length > 0) {
+        setPromoQueue((q) => [...q, ...res.promotions])
+      }
     })
 
     if (idx >= questions.length - 3) void loadMore()
@@ -108,12 +121,21 @@ export function GameBoard({ mode }: { mode: Mode }) {
     }, FLASH_MS)
   }
 
+  const promoOverlay = promotion ? (
+    <BeltPromotion
+      table={promotion.table}
+      belt={promotion.belt}
+      onDismiss={() => setPromoQueue((q) => q.slice(1))}
+    />
+  ) : null
+
   // ---- Sprint results screen ----
   if (mode === "sprint" && finished) {
     const accuracy =
       answered > 0 ? Math.round((correctCount / answered) * 100) : 0
     return (
       <main className="mx-auto flex min-h-dvh w-full max-w-lg flex-col items-center justify-center gap-8 px-6 py-10 text-center">
+        {promoOverlay}
         <p className="font-display text-xl text-primary">Time&apos;s up!</p>
         <div className="w-full rounded-2xl bg-card px-8 py-10 text-card-foreground shadow-xl">
           <p className="font-display text-lg text-card-foreground/70">
@@ -159,6 +181,7 @@ export function GameBoard({ mode }: { mode: Mode }) {
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-xl flex-col px-6 py-6">
+      {promoOverlay}
       {/* Top bar */}
       <div className="flex items-center justify-between">
         <Link
