@@ -1,48 +1,34 @@
 import { Analytics } from '@vercel/analytics/next'
 import type { Metadata, Viewport } from 'next'
-import { Baloo_2, Nunito } from 'next/font/google'
+import { Fredoka, Inter, JetBrains_Mono } from 'next/font/google'
 import './globals.css'
 
-const baloo = Baloo_2({
+const fredoka = Fredoka({
   subsets: ['latin'],
-  variable: '--font-baloo',
-  weight: ['500', '600', '700', '800'],
+  variable: '--font-fredoka',
+  weight: ['400', '500', '600', '700'],
 })
 
-const nunito = Nunito({
+const inter = Inter({
   subsets: ['latin'],
-  variable: '--font-nunito',
+  variable: '--font-inter',
+})
+
+const jetbrains = JetBrains_Mono({
+  subsets: ['latin'],
+  variable: '--font-jetbrains',
+  weight: ['500', '600', '700'],
 })
 
 export const metadata: Metadata = {
-  title: 'Times Table Heroes',
-  description: 'A fun game to master your times tables up to 12, one star at a time!',
+  title: 'Times Dojo',
+  description: 'Earn your black belt in the times tables, one fact at a time.',
   generator: 'v0.app',
-  icons: {
-    icon: [
-      {
-        url: '/icon-light-32x32.png',
-        media: '(prefers-color-scheme: light)',
-      },
-      {
-        url: '/icon-dark-32x32.png',
-        media: '(prefers-color-scheme: dark)',
-      },
-      {
-        url: '/icon.svg',
-        type: 'image/svg+xml',
-      },
-    ],
-    apple: '/apple-icon.png',
-  },
 }
 
 export const viewport: Viewport = {
-  colorScheme: 'light dark',
-  themeColor: [
-    { media: '(prefers-color-scheme: light)', color: 'white' },
-    { media: '(prefers-color-scheme: dark)', color: 'black' },
-  ],
+  themeColor: '#1b2340',
+  colorScheme: 'dark',
 }
 
 export default function RootLayout({
@@ -51,7 +37,10 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" className={`bg-background ${baloo.variable} ${nunito.variable}`}>
+    <html
+      lang="en"
+      className={`bg-background ${fredoka.variable} ${inter.variable} ${jetbrains.variable}`}
+    >
       <body className="font-sans antialiased">
         {children}
         {process.env.NODE_ENV === 'production' && <Analytics />}

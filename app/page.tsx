@@ -1,19 +1,69 @@
-import { redirect } from "next/navigation"
-import { headers } from "next/headers"
-import { auth } from "@/lib/auth"
-import { getProgress } from "@/app/actions/game"
-import { GameHome } from "@/components/game-home"
+import { Clock, Flame, ShieldCheck } from "lucide-react"
+import Image from "next/image"
+import Link from "next/link"
 
-export default async function HomePage() {
-  const session = await auth.api.getSession({ headers: await headers() })
-  if (!session?.user) redirect("/sign-in")
-
-  const progress = await getProgress()
-  const firstName = session.user.name?.split(" ")[0] || "friend"
-
+export default function HomePage() {
   return (
-    <main className="min-h-svh bg-background">
-      <GameHome name={firstName} progress={progress} />
+    <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col items-center px-6 py-10">
+      <div className="flex flex-col items-center text-center">
+        <Image
+          src="/dojo-mascot.png"
+          alt="Times Dojo mascot, a red panda in a karate gi"
+          width={180}
+          height={180}
+          priority
+          className="drop-shadow-xl"
+        />
+        <h1 className="mt-2 font-display text-5xl font-bold text-primary">
+          Times Dojo
+        </h1>
+        <p className="mt-2 text-balance font-sans text-base text-foreground/70">
+          Earn your black belt in the times tables, one fact at a time.
+        </p>
+      </div>
+
+      <div className="mt-10 flex w-full flex-col gap-4">
+        <Link
+          href="/practice"
+          className="group flex items-center gap-4 rounded-3xl bg-secondary px-6 py-5 text-secondary-foreground shadow-lg transition-transform active:scale-[0.98]"
+        >
+          <Flame className="size-8 shrink-0" />
+          <span className="flex flex-col">
+            <span className="font-display text-2xl font-semibold">Practice</span>
+            <span className="font-sans text-sm text-secondary-foreground/80">
+              No clock. Just you and the numbers.
+            </span>
+          </span>
+        </Link>
+
+        <Link
+          href="/sprint"
+          className="group flex items-center gap-4 rounded-3xl bg-primary px-6 py-5 text-primary-foreground shadow-lg transition-transform active:scale-[0.98]"
+        >
+          <Clock className="size-8 shrink-0" />
+          <span className="flex flex-col">
+            <span className="font-display text-2xl font-semibold">Sprint</span>
+            <span className="font-sans text-sm text-primary-foreground/80">
+              60 seconds. How many can you land?
+            </span>
+          </span>
+        </Link>
+
+        <Link
+          href="/belts"
+          className="group flex items-center gap-4 rounded-3xl border border-border px-6 py-5 text-foreground shadow-sm transition-colors hover:bg-muted"
+        >
+          <ShieldCheck className="size-8 shrink-0 text-primary" />
+          <span className="flex flex-col">
+            <span className="font-display text-2xl font-semibold">
+              Belt Wall
+            </span>
+            <span className="font-sans text-sm text-foreground/60">
+              See your belts and what to work on next.
+            </span>
+          </span>
+        </Link>
+      </div>
     </main>
   )
 }
