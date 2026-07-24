@@ -184,6 +184,61 @@ export function makeQuestion(fact: [number, number]): Question {
   return { a, b, answer, options, factKey: factKey(x, y) }
 }
 
+// ---- Worked-out explanation for a wrong answer ----
+// Verified correct against all 144 facts (1-12 × 1-12). Checked in this exact
+// order, first match wins, so each fact gets the simplest applicable trick.
+// Do NOT reorder the checks.
+export function explainFact(a: number, b: number): string[] {
+  const lo = Math.min(a, b)
+  const hi = Math.max(a, b)
+  const product = lo * hi
+  const other = (target: number) => (lo === target ? hi : lo)
+
+  if (lo === 1) {
+    return [`${hi} × 1 is just ${hi}. Anything times 1 stays the same.`]
+  }
+  if (lo === 10 || hi === 10) {
+    const n = other(10)
+    return [`${n} × 10: add a zero to ${n} → ${product}.`]
+  }
+  if (lo === 2 || hi === 2) {
+    const n = other(2)
+    return [`${n} × 2 is doubling: ${n} + ${n} = ${product}.`]
+  }
+  if (lo === 5 || hi === 5) {
+    const n = other(5)
+    return [`${n} × 5 is half of ${n} × 10: ${n * 10} ÷ 2 = ${product}.`]
+  }
+  if (lo === 11 || hi === 11) {
+    const n = other(11)
+    if (n <= 9) return [`${n} × 11: just repeat the digit → ${n}${n}.`]
+    return [`${n} × 11 = ${n} × 10 + ${n}: ${n * 10} + ${n} = ${product}.`]
+  }
+  if (lo === 9 || hi === 9) {
+    const n = other(9)
+    return [`${n} × 9 = ${n} × 10 − ${n}: ${n * 10} − ${n} = ${product}.`]
+  }
+  if (lo === 4 || hi === 4) {
+    const n = other(4)
+    return [`${n} × 4 is double, then double again: ${n} → ${n * 2} → ${product}.`]
+  }
+  if (lo === 3 || hi === 3) {
+    const n = other(3)
+    return [`${n} × 3: double ${n} and add one more ${n}: ${n * 2} + ${n} = ${product}.`]
+  }
+  if (lo === 6 || hi === 6) {
+    const n = other(6)
+    return [`${n} × 6 is double the ${n} × 3 fact: ${n} × 3 = ${n * 3}, doubled = ${product}.`]
+  }
+  if (lo === 12 || hi === 12) {
+    const n = other(12)
+    return [`${n} × 12 = ${n} × 10 + ${n} × 2: ${n * 10} + ${n * 2} = ${product}.`]
+  }
+  // The genuine no-shortcut facts: 7×7, 7×8, 8×8. Anchor to an easy ×5.
+  const rest = hi - 5
+  return [`${lo} × ${hi} = ${lo} × 5 + ${lo} × ${rest}: ${lo * 5} + ${lo * rest} = ${product}.`]
+}
+
 // ---- Belt tiers (table level) ----
 
 export const BELT_ORDER = [

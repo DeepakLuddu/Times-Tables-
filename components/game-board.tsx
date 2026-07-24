@@ -2,11 +2,11 @@
 
 import { getQuestions, recordAttempt } from "@/app/actions/dojo"
 import { BeltPromotion } from "@/components/belt-promotion"
-import type { Mode, Question } from "@/lib/engine"
+import { type Mode, type Question, explainFact } from "@/lib/engine"
 import type { BeltPromotion as BeltPromotionData } from "@/lib/insights"
 import { getPlayerId, newSessionId } from "@/lib/player"
 import { cn } from "@/lib/utils"
-import { Flame, House } from "lucide-react"
+import { ArrowRight, Flame, House, Lightbulb } from "lucide-react"
 import Link from "next/link"
 import { useCallback, useEffect, useRef, useState } from "react"
 
@@ -23,6 +23,8 @@ export function GameBoard({ mode }: { mode: Mode }) {
   const [idx, setIdx] = useState(0)
   const [status, setStatus] = useState<Status>("idle")
   const [chosen, setChosen] = useState<number | null>(null)
+  // Worked-out reasoning shown after a wrong answer (kid taps to continue).
+  const [working, setWorking] = useState<string[] | null>(null)
   const [streak, setStreak] = useState(0)
   const [answered, setAnswered] = useState(0)
   const [correctCount, setCorrectCount] = useState(0)
@@ -44,6 +46,7 @@ export function GameBoard({ mode }: { mode: Mode }) {
     setIdx(0)
     setStatus("idle")
     setChosen(null)
+    setWorking(null)
     setStreak(0)
     setAnswered(0)
     setCorrectCount(0)
@@ -64,9 +67,16 @@ export function GameBoard({ mode }: { mode: Mode }) {
   }, [startSitting])
 
   // Sprint countdown starts once the first question is on screen. It pauses
-  // while a belt promotion celebration is on screen so it stays fair.
+  // while a belt promotion celebration OR the "how to get there" card is on
+  // screen so reading the explanation never burns the kid's time.
   useEffect(() => {
-    if (mode !== "sprint" || finished || questions.length === 0 || promotion)
+    if (
+      mode !== "sprint" ||
+      finished ||
+      questions.length === 0 ||
+      promotion ||
+      working
+    )
       return
     if (timeLeft <= 0) {
       setFinished(true)
@@ -74,7 +84,7 @@ export function GameBoard({ mode }: { mode: Mode }) {
     }
     const t = setTimeout(() => setTimeLeft((s) => s - 1), 1000)
     return () => clearTimeout(t)
-  }, [mode, finished, timeLeft, questions.length, promotion])
+  }, [mode, finished, timeLeft, questions.length, promotion, working])
 
   const current = questions[idx]
 
@@ -85,6 +95,13 @@ export function GameBoard({ mode }: { mode: Mode }) {
     setQuestions((q) => [...q, ...more])
     fetchingRef.current = false
   }, [playerId])
+
+  const advance = useCallback(() => {
+    setStatus("idle")
+    setChosen(null)
+    setWorking(null)
+    setIdx((i) => i + 1)
+  }, [])
 
   function handleAnswer(option: number) {
     if (status !== "idle" || !current || finished) return
@@ -97,6 +114,8 @@ export function GameBoard({ mode }: { mode: Mode }) {
       setStreak((s) => s + 1)
     } else {
       setStreak(0)
+      // Show the worked-out reasoning and wait for the kid to tap continue.
+      setWorking(explainFact(current.a, current.b))
     }
 
     void recordAttempt({
@@ -114,11 +133,11 @@ export function GameBoard({ mode }: { mode: Mode }) {
 
     if (idx >= questions.length - 3) void loadMore()
 
-    window.setTimeout(() => {
-      setStatus("idle")
-      setChosen(null)
-      setIdx((i) => i + 1)
-    }, FLASH_MS)
+    // Correct answers keep the quick green flash + auto-advance. Wrong answers
+    // stay put until the kid dismisses the explanation card.
+    if (isCorrect) {
+      window.setTimeout(advance, FLASH_MS)
+    }
   }
 
   const promoOverlay = promotion ? (
@@ -252,7 +271,37 @@ export function GameBoard({ mode }: { mode: Mode }) {
         })}
       </div>
 
-      {mode === "practice" && (
+      {/* Worked-out reasoning after a wrong answer */}
+      {working && (
+        <div className="mb-2 rounded-2xl border border-border bg-card p-5 text-card-foreground shadow-lg">
+          <div className="flex items-center gap-2 text-primary">
+            <Lightbulb className="size-5" />
+            <p className="font-display text-lg font-semibold">
+              Here&apos;s how to get there
+            </p>
+          </div>
+          <div className="mt-3 space-y-2">
+            {working.map((line, i) => (
+              <p
+                key={i}
+                className="font-mono text-lg leading-relaxed text-card-foreground/90"
+              >
+                {line}
+              </p>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={advance}
+            className="mt-5 flex w-full items-center justify-center gap-2 rounded-2xl bg-primary px-6 py-4 font-display text-xl font-semibold text-primary-foreground transition-transform active:scale-95"
+          >
+            Got it, next question
+            <ArrowRight className="size-5" />
+          </button>
+        </div>
+      )}
+
+      {mode === "practice" && !working && (
         <p className="pb-2 text-center font-sans text-sm text-foreground/40">
           {answered} answered · keep the streak going
         </p>
