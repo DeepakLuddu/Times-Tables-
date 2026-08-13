@@ -1,7 +1,7 @@
 "use server"
 
 import { db } from "@/lib/db"
-import { attempts as attemptsTable } from "@/lib/db/schema"
+import { attempts as attemptsTable, withdrawals as withdrawalsTable } from "@/lib/db/schema"
 import {
   type Attempt,
   type Mode,
@@ -22,7 +22,38 @@ import {
   allSessionSummaries,
   parentReport,
 } from "@/lib/insights"
+import {
+  type PiggyBankSummary,
+  type WithdrawalEntry,
+  computePiggyBank,
+  crossedMultiple,
+} from "@/lib/piggybank"
 import { eq } from "drizzle-orm"
+
+async function loadWithdrawals(playerId: string): Promise<WithdrawalEntry[]> {
+  if (!playerId) return []
+  const rows = await db
+    .select()
+    .from(withdrawalsTable)
+    .where(eq(withdrawalsTable.playerId, playerId))
+  return rows.map((r) => ({
+    id: r.id,
+    amountCents: r.amountCents,
+    balanceBeforeCents: r.balanceBeforeCents,
+    balanceAfterCents: r.balanceAfterCents,
+    createdAt: r.createdAt,
+  }))
+}
+
+// What the correct-answer celebration needs to animate the coin flying
+// into the piggy bank and to decide which milestone banner (if any) fires.
+export interface PiggyBankDelta {
+  earnedCents: number // 0 or 1 — 0 means this week's cap was already reached
+  summary: PiggyBankSummary // authoritative state after this answer
+  crossedDime: boolean // lifetime balance just crossed a $0.10 multiple
+  crossedDollar: boolean // lifetime balance just crossed a $1.00 multiple
+  reachedWeeklyCap: boolean // this answer is what hit the $5/week cap
+}
 
 // Load a player's full attempts log as engine-ready Attempt objects.
 async function loadAttempts(playerId: string): Promise<Attempt[]> {
@@ -42,7 +73,8 @@ async function loadAttempts(playerId: string): Promise<Attempt[]> {
 }
 
 // Record one answered question. Returns any belt promotions this answer
-// triggered for the tables involved (fuels the celebration animation).
+// triggered for the tables involved, plus the Piggy Bank delta — both fuel
+// the correct-answer celebration animation.
 export async function recordAttempt(input: {
   playerId: string
   sessionId: string
@@ -50,11 +82,16 @@ export async function recordAttempt(input: {
   a: number
   b: number
   correct: boolean
-}): Promise<{ promotions: BeltPromotion[] }> {
-  if (!input.playerId || !input.sessionId) return { promotions: [] }
+}): Promise<{ promotions: BeltPromotion[]; piggyBank: PiggyBankDelta | null }> {
+  if (!input.playerId || !input.sessionId)
+    return { promotions: [], piggyBank: null }
 
-  const before = await loadAttempts(input.playerId)
+  const [before, withdrawals] = await Promise.all([
+    loadAttempts(input.playerId),
+    loadWithdrawals(input.playerId),
+  ])
   const beforeTables = computeTableStats(before)
+  const beforePiggy = computePiggyBank(before, withdrawals)
 
   await db.insert(attemptsTable).values({
     playerId: input.playerId,
@@ -73,7 +110,27 @@ export async function recordAttempt(input: {
     sessionId: input.sessionId,
     createdAt: new Date(),
   }
-  const afterTables = computeTableStats([...before, newAttempt])
+  const after = [...before, newAttempt]
+  const afterTables = computeTableStats(after)
+  const afterPiggy = computePiggyBank(after, withdrawals)
+
+  const piggyBank: PiggyBankDelta = {
+    earnedCents: afterPiggy.balanceCents - beforePiggy.balanceCents,
+    summary: afterPiggy,
+    crossedDime: crossedMultiple(
+      beforePiggy.balanceCents,
+      afterPiggy.balanceCents,
+      10,
+    ),
+    crossedDollar: crossedMultiple(
+      beforePiggy.balanceCents,
+      afterPiggy.balanceCents,
+      100,
+    ),
+    reachedWeeklyCap:
+      beforePiggy.earnedThisWeekCents < beforePiggy.weeklyCapCents &&
+      afterPiggy.earnedThisWeekCents >= afterPiggy.weeklyCapCents,
+  }
 
   const promotions: BeltPromotion[] = []
   const involved = input.a === input.b ? [input.a] : [input.a, input.b]
@@ -84,7 +141,7 @@ export async function recordAttempt(input: {
       promotions.push({ table: t, belt: a.belt })
     }
   }
-  return { promotions }
+  return { promotions, piggyBank }
 }
 
 // Generate a batch of questions using the adaptive engine.

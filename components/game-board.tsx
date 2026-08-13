@@ -1,6 +1,7 @@
 "use client"
 
 import { getQuestions, recordAttempt } from "@/app/actions/dojo"
+import { addPracticeTime, getPiggyBankState, getPracticeTimeToday } from "@/app/actions/piggybank"
 import {
   AnswerCelebration,
   isMilestoneStreak,
@@ -8,9 +9,19 @@ import {
 } from "@/components/answer-celebration"
 import { BeltPromotion } from "@/components/belt-promotion"
 import { FactVisuals } from "@/components/fact-visuals"
+import { DAILY_GOAL_SECONDS, PiggyBank } from "@/components/piggy-bank"
+import {
+  PiggyCelebration,
+  type PiggyCelebrationData,
+} from "@/components/piggy-celebration"
 import type { Mode, Question } from "@/lib/engine"
 import type { BeltPromotion as BeltPromotionData } from "@/lib/insights"
 import { getPlayerId, newSessionId } from "@/lib/player"
+import {
+  type PiggyBankSummary,
+  WEEKLY_CAP_CENTS,
+  localDateKey,
+} from "@/lib/piggybank"
 import { cn } from "@/lib/utils"
 import { Flame, House } from "lucide-react"
 import Link from "next/link"
@@ -22,6 +33,23 @@ const FLASH_MS = 650
 // Correct answers that land on a streak milestone get a slightly longer
 // beat so the "5 STREAK!" banner has time to read before the next question.
 const MILESTONE_FLASH_MS = 900
+// The kid should never be left staring at a page with no interaction for
+// this long and still have it count as "active practice."
+const IDLE_MS = 30_000
+// How often accumulated active seconds get persisted to the server.
+const PRACTICE_FLUSH_MS = 8_000
+
+const EMPTY_PIGGY: PiggyBankSummary = {
+  balanceCents: 0,
+  earnedThisWeekCents: 0,
+  weeklyCapCents: WEEKLY_CAP_CENTS,
+  weekStart: "",
+  totalCorrect: 0,
+  correctThisWeek: 0,
+  currentStreak: 0,
+  bestStreak: 0,
+  withdrawals: [],
+}
 
 type Status = "idle" | "correct" | "wrong"
 
@@ -52,6 +80,20 @@ export function GameBoard({ mode }: { mode: Mode }) {
   const [celebration, setCelebration] = useState<CelebrationData | null>(null)
   const streakBadgeRef = useRef<HTMLDivElement>(null)
 
+  // Piggy Bank: balance/weekly-earned/streaks (persisted, computed on the
+  // server from the attempts log) plus the coin-fly celebration.
+  const [piggy, setPiggy] = useState<PiggyBankSummary | null>(null)
+  const [piggyBounceKey, setPiggyBounceKey] = useState(0)
+  const [piggyCelebration, setPiggyCelebration] =
+    useState<PiggyCelebrationData | null>(null)
+  const piggyRef = useRef<HTMLDivElement>(null)
+
+  // Today's active-practice seconds, toward the 15-minute goal. Only ticks
+  // while this tab is visible and the kid has interacted recently.
+  const [todaySeconds, setTodaySeconds] = useState(0)
+  const lastActivityRef = useRef(Date.now())
+  const pendingSecondsRef = useRef(0)
+
   const fetchingRef = useRef(false)
   const startedRef = useRef(false)
 
@@ -69,6 +111,7 @@ export function GameBoard({ mode }: { mode: Mode }) {
     setFinished(false)
     setPromoQueue([])
     setCelebration(null)
+    setPiggyCelebration(null)
     const first = await getQuestions(pid, BATCH, true)
     setQuestions(first)
   }, [])
@@ -79,8 +122,59 @@ export function GameBoard({ mode }: { mode: Mode }) {
     if (!startedRef.current) {
       startedRef.current = true
       void startSitting(pid)
+      void getPiggyBankState(pid).then(setPiggy)
+      void getPracticeTimeToday(pid, localDateKey()).then((seconds) =>
+        setTodaySeconds(seconds),
+      )
     }
   }, [startSitting])
+
+  // Track "active" time: only while the tab is visible and the kid has
+  // interacted recently, never while backgrounded or idle.
+  useEffect(() => {
+    function markActive() {
+      lastActivityRef.current = Date.now()
+    }
+    markActive()
+    window.addEventListener("pointerdown", markActive)
+    window.addEventListener("keydown", markActive)
+    window.addEventListener("touchstart", markActive)
+    return () => {
+      window.removeEventListener("pointerdown", markActive)
+      window.removeEventListener("keydown", markActive)
+      window.removeEventListener("touchstart", markActive)
+    }
+  }, [])
+
+  useEffect(() => {
+    const tick = window.setInterval(() => {
+      const isVisible = document.visibilityState === "visible"
+      const isActive = Date.now() - lastActivityRef.current < IDLE_MS
+      if (isVisible && isActive) {
+        pendingSecondsRef.current += 1
+        setTodaySeconds((s) => s + 1)
+      }
+    }, 1000)
+    return () => window.clearInterval(tick)
+  }, [])
+
+  // Flush accumulated active seconds to the server periodically (and once
+  // more on unmount, best-effort) rather than on every single tick.
+  useEffect(() => {
+    if (!playerId) return
+    const flush = () => {
+      const delta = pendingSecondsRef.current
+      if (delta > 0) {
+        pendingSecondsRef.current = 0
+        void addPracticeTime(playerId, localDateKey(), delta)
+      }
+    }
+    const flushTimer = window.setInterval(flush, PRACTICE_FLUSH_MS)
+    return () => {
+      window.clearInterval(flushTimer)
+      flush()
+    }
+  }, [playerId])
 
   // Sprint countdown starts once the first question is on screen. It pauses
   // while a belt promotion celebration OR the wrong-answer visuals are on
@@ -117,6 +211,7 @@ export function GameBoard({ mode }: { mode: Mode }) {
     setChosen(null)
     setReviewing(false)
     setCelebration(null)
+    setPiggyCelebration(null)
     setIdx((i) => i + 1)
   }, [])
 
@@ -128,6 +223,7 @@ export function GameBoard({ mode }: { mode: Mode }) {
     setAnswered((n) => n + 1)
 
     let newStreak = streak
+    let piggyBigMilestone = false
     if (isCorrect) {
       newStreak = streak + 1
       setCorrectCount((n) => n + 1)
@@ -139,9 +235,53 @@ export function GameBoard({ mode }: { mode: Mode }) {
           streak: newStreak,
         })
       }
+
+      // Optimistic Piggy Bank update: mirrors the server's cap logic so the
+      // coin animation and balance bump feel instant, then gets silently
+      // corrected once recordAttempt's authoritative summary comes back.
+      if (buttonEl && piggy) {
+        const willEarn = piggy.earnedThisWeekCents < piggy.weeklyCapCents
+        const earnedCents = willEarn ? 1 : 0
+        const newBalanceCents = piggy.balanceCents + earnedCents
+        const newEarnedThisWeekCents = Math.min(
+          piggy.earnedThisWeekCents + earnedCents,
+          piggy.weeklyCapCents,
+        )
+        const crossedDime =
+          Math.floor(piggy.balanceCents / 10) <
+          Math.floor(newBalanceCents / 10)
+        const crossedDollar =
+          Math.floor(piggy.balanceCents / 100) <
+          Math.floor(newBalanceCents / 100)
+        const reachedWeeklyCap =
+          piggy.earnedThisWeekCents < piggy.weeklyCapCents &&
+          newEarnedThisWeekCents >= piggy.weeklyCapCents
+        piggyBigMilestone = reachedWeeklyCap || crossedDollar
+
+        setPiggy({
+          ...piggy,
+          balanceCents: newBalanceCents,
+          earnedThisWeekCents: newEarnedThisWeekCents,
+          correctThisWeek: piggy.correctThisWeek + 1,
+          totalCorrect: piggy.totalCorrect + 1,
+          currentStreak: piggy.currentStreak + 1,
+          bestStreak: Math.max(piggy.bestStreak, piggy.currentStreak + 1),
+        })
+        setPiggyBounceKey((k) => k + 1)
+        setPiggyCelebration({
+          origin: buttonEl.getBoundingClientRect(),
+          target: piggyRef.current?.getBoundingClientRect() ?? null,
+          earnedCents,
+          crossedDime,
+          crossedDollar,
+          reachedWeeklyCap,
+          balanceAfterCents: newBalanceCents,
+        })
+      }
     } else {
       setStreak(0)
       setCelebration(null)
+      setPiggyCelebration(null)
       // Pause and let the kid explore the visuals before continuing.
       setReviewing(true)
     }
@@ -157,15 +297,23 @@ export function GameBoard({ mode }: { mode: Mode }) {
       if (res.promotions.length > 0) {
         setPromoQueue((q) => [...q, ...res.promotions])
       }
+      // Reconcile with the server's authoritative numbers (silent — the
+      // celebration already played off the optimistic update above).
+      if (res.piggyBank) {
+        setPiggy(res.piggyBank.summary)
+      }
     })
 
     if (idx >= questions.length - 3) void loadMore()
 
     // Correct answers keep the quick pop + auto-advance (a beat longer at
-    // streak milestones so the banner is readable). Wrong answers stay put
-    // until the kid dismisses the visuals card.
+    // streak or Piggy Bank milestones so the banner is readable). Wrong
+    // answers stay put until the kid dismisses the visuals card.
     if (isCorrect) {
-      const delay = isMilestoneStreak(newStreak) ? MILESTONE_FLASH_MS : FLASH_MS
+      const delay =
+        isMilestoneStreak(newStreak) || piggyBigMilestone
+          ? MILESTONE_FLASH_MS
+          : FLASH_MS
       window.setTimeout(advance, delay)
     }
   }
@@ -239,6 +387,18 @@ export function GameBoard({ mode }: { mode: Mode }) {
           streak={celebration.streak}
         />
       )}
+      {piggyCelebration && (
+        <PiggyCelebration
+          key={`piggy-${idx}`}
+          origin={piggyCelebration.origin}
+          target={piggyCelebration.target}
+          earnedCents={piggyCelebration.earnedCents}
+          crossedDime={piggyCelebration.crossedDime}
+          crossedDollar={piggyCelebration.crossedDollar}
+          reachedWeeklyCap={piggyCelebration.reachedWeeklyCap}
+          balanceAfterCents={piggyCelebration.balanceAfterCents}
+        />
+      )}
       {/* Top bar */}
       <div className="flex items-center justify-between">
         <Link
@@ -275,6 +435,16 @@ export function GameBoard({ mode }: { mode: Mode }) {
         ) : (
           <SprintTimer timeLeft={timeLeft} />
         )}
+      </div>
+
+      {/* Piggy Bank */}
+      <div className="mt-3">
+        <PiggyBank
+          ref={piggyRef}
+          summary={piggy ?? EMPTY_PIGGY}
+          todaySeconds={todaySeconds}
+          bounceKey={piggyBounceKey}
+        />
       </div>
 
       {/* Equation */}

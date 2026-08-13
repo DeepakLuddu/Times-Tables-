@@ -2,6 +2,7 @@
 
 import { getParentReport } from "@/app/actions/dojo"
 import { Belt } from "@/components/belt"
+import { PiggyBankParent } from "@/components/piggy-bank-parent"
 import type { ParentReport as Report } from "@/lib/insights"
 import { getPlayerId } from "@/lib/player"
 import { cn } from "@/lib/utils"
@@ -33,9 +34,11 @@ function formatDate(iso: string | null): string {
 
 export function ParentReport() {
   const [report, setReport] = useState<Report | null>(null)
+  const [playerId, setPlayerId] = useState("")
 
   useEffect(() => {
     const pid = getPlayerId()
+    setPlayerId(pid)
     void getParentReport(pid).then(setReport)
   }, [])
 
@@ -59,12 +62,14 @@ export function ParentReport() {
         </div>
       </div>
 
+      {playerId && <PiggyBankParent playerId={playerId} />}
+
       {!report ? (
-        <p className="mt-16 text-center font-display text-lg text-foreground/50">
+        <p className="mt-8 text-center font-display text-lg text-foreground/50">
           Loading the report…
         </p>
       ) : report.totalQuestions === 0 ? (
-        <div className="mt-16 rounded-2xl bg-card px-6 py-10 text-center text-card-foreground shadow-md">
+        <div className="mt-6 rounded-2xl bg-card px-6 py-10 text-center text-card-foreground shadow-md">
           <p className="font-display text-xl font-semibold">No practice yet</p>
           <p className="mt-2 font-sans text-sm text-card-foreground/70">
             Once your child answers a few questions, this page will fill with
