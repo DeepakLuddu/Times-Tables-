@@ -166,11 +166,94 @@
   animation: confetti-fall linear forwards;
 }
 
+/* ---- Correct-answer celebration ---- */
+@keyframes star-burst {
+  0% {
+    transform: translate(-50%, -50%) scale(0.4) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(calc(-50% + var(--sx)), calc(-50% + var(--sy)))
+      scale(1.1) rotate(160deg);
+    opacity: 0;
+  }
+}
+
+@keyframes fly-up {
+  0% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+  65% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(calc(-50% + var(--tx)), calc(-50% + var(--ty)))
+      scale(0.5);
+    opacity: 0;
+  }
+}
+
+@keyframes milestone-pop {
+  0% {
+    transform: scale(0.4) rotate(-6deg);
+    opacity: 0;
+  }
+  35% {
+    transform: scale(1.15) rotate(2deg);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
+  }
+  82% {
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.92) rotate(0deg);
+    opacity: 0;
+  }
+}
+
+@keyframes streak-pop {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.35);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.animate-star-burst {
+  animation: star-burst 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.animate-fly-up {
+  animation: fly-up 0.6s cubic-bezier(0.3, 0.7, 0.4, 1) both;
+}
+
+.animate-milestone-pop {
+  animation: milestone-pop 0.85s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.animate-streak-pop {
+  animation: streak-pop 0.35s ease-out;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-belt-pop-in,
   .animate-badge-rise,
   .animate-ray-spin,
-  .confetti-piece {
+  .confetti-piece,
+  .animate-star-burst,
+  .animate-fly-up,
+  .animate-milestone-pop,
+  .animate-streak-pop {
     animation-duration: 0.001s;
     animation-iteration-count: 1;
   }

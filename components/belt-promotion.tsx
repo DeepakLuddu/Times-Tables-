@@ -13,7 +13,7 @@ const BELT_LABEL: Record<BeltTier, string> = {
   black: "Black",
 }
 
-const CONFETTI_COLORS = [
+export const CONFETTI_COLORS = [
   "bg-primary",
   "bg-secondary",
   "bg-belt-blue",

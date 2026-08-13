@@ -1,6 +1,11 @@
 "use client"
 
 import { getQuestions, recordAttempt } from "@/app/actions/dojo"
+import {
+  AnswerCelebration,
+  isMilestoneStreak,
+  type CelebrationData,
+} from "@/components/answer-celebration"
 import { BeltPromotion } from "@/components/belt-promotion"
 import { FactVisuals } from "@/components/fact-visuals"
 import type { Mode, Question } from "@/lib/engine"
@@ -14,6 +19,9 @@ import { useCallback, useEffect, useRef, useState } from "react"
 const BATCH = 12
 const SPRINT_SECONDS = 60
 const FLASH_MS = 650
+// Correct answers that land on a streak milestone get a slightly longer
+// beat so the "5 STREAK!" banner has time to read before the next question.
+const MILESTONE_FLASH_MS = 900
 
 type Status = "idle" | "correct" | "wrong"
 
@@ -39,6 +47,11 @@ export function GameBoard({ mode }: { mode: Mode }) {
   const [promoQueue, setPromoQueue] = useState<BeltPromotionData[]>([])
   const promotion = promoQueue[0] ?? null
 
+  // Correct-answer celebration (star burst + "+1" flying toward the streak
+  // badge, plus a bigger banner at streak milestones).
+  const [celebration, setCelebration] = useState<CelebrationData | null>(null)
+  const streakBadgeRef = useRef<HTMLDivElement>(null)
+
   const fetchingRef = useRef(false)
   const startedRef = useRef(false)
 
@@ -55,6 +68,7 @@ export function GameBoard({ mode }: { mode: Mode }) {
     setTimeLeft(SPRINT_SECONDS)
     setFinished(false)
     setPromoQueue([])
+    setCelebration(null)
     const first = await getQuestions(pid, BATCH, true)
     setQuestions(first)
   }, [])
@@ -102,20 +116,32 @@ export function GameBoard({ mode }: { mode: Mode }) {
     setStatus("idle")
     setChosen(null)
     setReviewing(false)
+    setCelebration(null)
     setIdx((i) => i + 1)
   }, [])
 
-  function handleAnswer(option: number) {
+  function handleAnswer(option: number, buttonEl: HTMLButtonElement | null) {
     if (status !== "idle" || !current || finished) return
     const isCorrect = option === current.answer
     setChosen(option)
     setStatus(isCorrect ? "correct" : "wrong")
     setAnswered((n) => n + 1)
+
+    let newStreak = streak
     if (isCorrect) {
+      newStreak = streak + 1
       setCorrectCount((n) => n + 1)
-      setStreak((s) => s + 1)
+      setStreak(newStreak)
+      if (buttonEl) {
+        setCelebration({
+          origin: buttonEl.getBoundingClientRect(),
+          target: streakBadgeRef.current?.getBoundingClientRect() ?? null,
+          streak: newStreak,
+        })
+      }
     } else {
       setStreak(0)
+      setCelebration(null)
       // Pause and let the kid explore the visuals before continuing.
       setReviewing(true)
     }
@@ -135,10 +161,12 @@ export function GameBoard({ mode }: { mode: Mode }) {
 
     if (idx >= questions.length - 3) void loadMore()
 
-    // Correct answers keep the quick green flash + auto-advance. Wrong answers
-    // stay put until the kid dismisses the visuals card.
+    // Correct answers keep the quick pop + auto-advance (a beat longer at
+    // streak milestones so the banner is readable). Wrong answers stay put
+    // until the kid dismisses the visuals card.
     if (isCorrect) {
-      window.setTimeout(advance, FLASH_MS)
+      const delay = isMilestoneStreak(newStreak) ? MILESTONE_FLASH_MS : FLASH_MS
+      window.setTimeout(advance, delay)
     }
   }
 
@@ -203,6 +231,14 @@ export function GameBoard({ mode }: { mode: Mode }) {
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-xl flex-col px-6 py-6">
       {promoOverlay}
+      {celebration && (
+        <AnswerCelebration
+          key={idx}
+          origin={celebration.origin}
+          target={celebration.target}
+          streak={celebration.streak}
+        />
+      )}
       {/* Top bar */}
       <div className="flex items-center justify-between">
         <Link
@@ -214,14 +250,25 @@ export function GameBoard({ mode }: { mode: Mode }) {
         </Link>
 
         {mode === "practice" ? (
-          <div className="flex items-center gap-2 rounded-full bg-muted px-4 py-2">
+          <div
+            ref={streakBadgeRef}
+            className="flex items-center gap-2 rounded-full bg-muted px-4 py-2"
+          >
             <Flame
+              key={`flame-${streak}`}
               className={cn(
                 "size-5",
+                streak > 0 && "animate-streak-pop",
                 streak > 0 ? "text-primary" : "text-foreground/30",
               )}
             />
-            <span className="font-mono text-lg font-bold text-foreground">
+            <span
+              key={`count-${streak}`}
+              className={cn(
+                "font-mono text-lg font-bold text-foreground",
+                streak > 0 && "animate-streak-pop",
+              )}
+            >
               {streak}
             </span>
           </div>
@@ -258,7 +305,7 @@ export function GameBoard({ mode }: { mode: Mode }) {
               key={opt}
               type="button"
               disabled={status !== "idle"}
-              onClick={() => handleAnswer(opt)}
+              onClick={(e) => handleAnswer(opt, e.currentTarget)}
               className={cn(
                 "flex h-24 items-center justify-center rounded-2xl font-mono text-4xl font-bold shadow-md transition-all active:scale-95 sm:h-28",
                 "bg-card text-card-foreground",
