@@ -2,6 +2,9 @@
 
 import { type BeltWallData, getBeltWallData } from "@/app/actions/dojo"
 import { Belt } from "@/components/belt"
+import { BeltDetail } from "@/components/belt-detail"
+import { AnimatedPercentLabel, MasteryBar } from "@/components/mastery-bar"
+import type { TableMastery } from "@/lib/mastery"
 import { getPlayerId } from "@/lib/player"
 import { ArrowRight, House, Sparkles } from "lucide-react"
 import Link from "next/link"
@@ -25,6 +28,7 @@ const MODE_LABEL: Record<string, string> = {
 
 export function BeltWall() {
   const [data, setData] = useState<BeltWallData | null>(null)
+  const [selected, setSelected] = useState<TableMastery | null>(null)
 
   useEffect(() => {
     const pid = getPlayerId()
@@ -33,6 +37,9 @@ export function BeltWall() {
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-2xl flex-col px-5 py-6">
+      {selected && (
+        <BeltDetail mastery={selected} onClose={() => setSelected(null)} />
+      )}
       <div className="flex items-center gap-3">
         <Link
           href="/"
@@ -54,17 +61,26 @@ export function BeltWall() {
         <>
           {/* Belt grid */}
           <div className="mt-6 grid grid-cols-3 gap-3 sm:grid-cols-4">
-            {data.tables.map((t) => (
-              <div
-                key={t.table}
-                className="flex flex-col items-center gap-2 rounded-2xl bg-card px-3 py-4 text-card-foreground shadow-md"
+            {data.mastery.map((m) => (
+              <button
+                key={m.table}
+                type="button"
+                onClick={() => setSelected(m)}
+                className="flex flex-col items-center gap-1.5 rounded-2xl bg-card px-3 py-4 text-card-foreground shadow-md transition-transform active:scale-95"
               >
-                <span className="font-mono text-2xl font-bold">{t.table}</span>
-                <Belt tier={t.belt} className="h-6 w-14" />
-                <span className="font-mono text-xs font-semibold text-card-foreground/60">
-                  {t.attempts === 0 ? "—" : `${Math.round(t.accuracy * 100)}%`}
+                <span className="font-mono text-2xl font-bold">
+                  {m.table}
                 </span>
-              </div>
+                <Belt tier={m.belt} className="h-6 w-14" />
+                <MasteryBar percent={m.percent} size="sm" className="mt-1" />
+                <AnimatedPercentLabel
+                  percent={m.percent}
+                  className="font-mono text-xs font-semibold text-card-foreground/70"
+                />
+                <span className="text-center font-sans text-[10px] font-medium leading-tight text-card-foreground/50">
+                  {m.stateLabel}
+                </span>
+              </button>
             ))}
           </div>
 

@@ -1,7 +1,11 @@
 "use server"
 
 import { db } from "@/lib/db"
-import { attempts as attemptsTable, withdrawals as withdrawalsTable } from "@/lib/db/schema"
+import {
+  attempts as attemptsTable,
+  beltAwards as beltAwardsTable,
+  withdrawals as withdrawalsTable,
+} from "@/lib/db/schema"
 import {
   type Attempt,
   type Mode,
@@ -22,6 +26,7 @@ import {
   allSessionSummaries,
   parentReport,
 } from "@/lib/insights"
+import { type TableMastery, computeTableMastery } from "@/lib/mastery"
 import {
   type PiggyBankSummary,
   type WithdrawalEntry,
@@ -69,7 +74,19 @@ async function loadAttempts(playerId: string): Promise<Attempt[]> {
     mode: r.mode as Mode,
     sessionId: r.sessionId,
     createdAt: r.createdAt,
+    answerMs: r.answerMs ?? undefined,
   }))
+}
+
+// Which tables this player has already formally earned a belt for —
+// permanent once granted, regardless of later performance.
+async function loadBeltAwards(playerId: string): Promise<Map<number, Date>> {
+  if (!playerId) return new Map()
+  const rows = await db
+    .select()
+    .from(beltAwardsTable)
+    .where(eq(beltAwardsTable.playerId, playerId))
+  return new Map(rows.map((r) => [r.tableNumber, r.awardedAt]))
 }
 
 // Record one answered question. Returns any belt promotions this answer
@@ -82,15 +99,16 @@ export async function recordAttempt(input: {
   a: number
   b: number
   correct: boolean
+  answerMs: number
 }): Promise<{ promotions: BeltPromotion[]; piggyBank: PiggyBankDelta | null }> {
   if (!input.playerId || !input.sessionId)
     return { promotions: [], piggyBank: null }
 
-  const [before, withdrawals] = await Promise.all([
+  const [before, withdrawals, awards] = await Promise.all([
     loadAttempts(input.playerId),
     loadWithdrawals(input.playerId),
+    loadBeltAwards(input.playerId),
   ])
-  const beforeTables = computeTableStats(before)
   const beforePiggy = computePiggyBank(before, withdrawals)
 
   await db.insert(attemptsTable).values({
@@ -100,6 +118,9 @@ export async function recordAttempt(input: {
     factorA: input.a,
     factorB: input.b,
     correct: input.correct,
+    answerMs: Number.isFinite(input.answerMs)
+      ? Math.max(0, Math.round(input.answerMs))
+      : null,
   })
 
   const newAttempt: Attempt = {
@@ -109,9 +130,9 @@ export async function recordAttempt(input: {
     mode: input.mode,
     sessionId: input.sessionId,
     createdAt: new Date(),
+    answerMs: Number.isFinite(input.answerMs) ? input.answerMs : undefined,
   }
   const after = [...before, newAttempt]
-  const afterTables = computeTableStats(after)
   const afterPiggy = computePiggyBank(after, withdrawals)
 
   const piggyBank: PiggyBankDelta = {
@@ -132,15 +153,41 @@ export async function recordAttempt(input: {
       afterPiggy.earnedThisWeekCents >= afterPiggy.weeklyCapCents,
   }
 
+  // Belt tier now comes entirely from the mastery formula (lib/mastery.ts),
+  // not raw accuracy. A table's belt is earned exactly once — the instant
+  // every requirement is met, we mint the award right here so it's
+  // permanent from this same answer onward.
   const promotions: BeltPromotion[] = []
   const involved = input.a === input.b ? [input.a] : [input.a, input.b]
+  const newlyAwarded: number[] = []
   for (const t of involved) {
-    const b = beforeTables.get(t)
-    const a = afterTables.get(t)
-    if (b && a && beltIndex(a.belt) > beltIndex(b.belt)) {
-      promotions.push({ table: t, belt: a.belt })
+    const beforeMastery = computeTableMastery(t, before, awards.get(t) ?? null)
+    let afterAwardedAt = awards.get(t) ?? null
+    let afterMastery = computeTableMastery(t, after, afterAwardedAt)
+    // percent === 99 means every requirement just became complete but the
+    // belt hasn't been formally awarded yet — award it now.
+    if (!afterAwardedAt && afterMastery.percent === 99) {
+      afterAwardedAt = new Date()
+      newlyAwarded.push(t)
+      afterMastery = computeTableMastery(t, after, afterAwardedAt)
+    }
+    if (beltIndex(afterMastery.belt) > beltIndex(beforeMastery.belt)) {
+      promotions.push({ table: t, belt: afterMastery.belt })
     }
   }
+
+  if (newlyAwarded.length > 0) {
+    await db
+      .insert(beltAwardsTable)
+      .values(
+        newlyAwarded.map((t) => ({
+          playerId: input.playerId,
+          tableNumber: t,
+        })),
+      )
+      .onConflictDoNothing()
+  }
+
   return { promotions, piggyBank }
 }
 
@@ -180,6 +227,7 @@ export async function getQuestions(
 
 export interface BeltWallData {
   tables: TableStat[]
+  mastery: TableMastery[]
   needsPractice: TroubleFact[]
   sessions: SessionSummary[]
   nextSessionFacts: TroubleFact[]
@@ -187,12 +235,19 @@ export interface BeltWallData {
 
 // Everything the Belt Wall / recap screen needs, computed on read.
 export async function getBeltWallData(playerId: string): Promise<BeltWallData> {
-  const attempts = await loadAttempts(playerId)
+  const [attempts, awards] = await Promise.all([
+    loadAttempts(playerId),
+    loadBeltAwards(playerId),
+  ])
   const tableStats = computeTableStats(attempts)
   const factStats = computeFactStats(attempts)
 
   const tables = Array.from(tableStats.values()).sort(
     (a, b) => a.table - b.table,
+  )
+
+  const mastery: TableMastery[] = Array.from({ length: 12 }, (_, i) => i + 1).map(
+    (t) => computeTableMastery(t, attempts, awards.get(t) ?? null),
   )
 
   // Facts that currently need practice: unmastered with a wrong pattern.
@@ -215,7 +270,7 @@ export async function getBeltWallData(playerId: string): Promise<BeltWallData> {
   const sessions = allSessionSummaries(attempts)
   const nextSessionFacts = sessions.length > 0 ? sessions[0].troubleFacts : []
 
-  return { tables, needsPractice, sessions, nextSessionFacts }
+  return { tables, mastery, needsPractice, sessions, nextSessionFacts }
 }
 
 // Aggregated report for the parent-facing view.

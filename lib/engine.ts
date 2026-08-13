@@ -10,6 +10,10 @@ export interface Attempt {
   mode: Mode
   sessionId: string
   createdAt: Date
+  // Milliseconds from question shown to answer submitted. Optional because
+  // attempts recorded before this field existed won't have it — treated as
+  // "not fast" (never counts toward fluency) rather than an error.
+  answerMs?: number
 }
 
 export interface Question {

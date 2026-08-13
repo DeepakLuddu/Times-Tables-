@@ -22,6 +22,9 @@ export const attempts = pgTable("attempts", {
   factorB: integer("factorB").notNull(),
   correct: boolean("correct").notNull(),
   createdAt: timestamp("createdAt", { withTimezone: true }).notNull().defaultNow(),
+  // Milliseconds from question shown to answer submitted. Nullable because
+  // rows recorded before this column existed won't have it.
+  answerMs: integer("answerMs"),
 })
 
 export type AttemptRow = typeof attempts.$inferSelect
@@ -71,3 +74,22 @@ export const parentSettings = pgTable("parentSettings", {
 })
 
 export type ParentSettingsRow = typeof parentSettings.$inferSelect
+
+// ---- Belt Wall mastery ----
+// A table's belt is earned exactly once, the moment its 8-part mastery
+// formula (lib/mastery.ts) first hits 100%. From then on the Belt Wall
+// pins that table's card at 100% / MASTERED permanently, regardless of
+// later performance — this row is what "permanently" means.
+export const beltAwards = pgTable(
+  "beltAwards",
+  {
+    playerId: text("playerId").notNull(),
+    tableNumber: integer("tableNumber").notNull(),
+    awardedAt: timestamp("awardedAt", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.playerId, table.tableNumber] })],
+)
+
+export type BeltAwardRow = typeof beltAwards.$inferSelect

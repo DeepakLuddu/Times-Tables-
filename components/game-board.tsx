@@ -94,6 +94,10 @@ export function GameBoard({ mode }: { mode: Mode }) {
   const lastActivityRef = useRef(Date.now())
   const pendingSecondsRef = useRef(0)
 
+  // When the current question appeared, for the Belt Wall fluency component
+  // (time from question shown to answer submitted).
+  const questionShownAtRef = useRef(Date.now())
+
   const fetchingRef = useRef(false)
   const startedRef = useRef(false)
 
@@ -198,6 +202,11 @@ export function GameBoard({ mode }: { mode: Mode }) {
 
   const current = questions[idx]
 
+  // Reset the "question shown at" clock every time a new question appears.
+  useEffect(() => {
+    questionShownAtRef.current = Date.now()
+  }, [idx])
+
   const loadMore = useCallback(async () => {
     if (fetchingRef.current || !playerId) return
     fetchingRef.current = true
@@ -217,6 +226,7 @@ export function GameBoard({ mode }: { mode: Mode }) {
 
   function handleAnswer(option: number, buttonEl: HTMLButtonElement | null) {
     if (status !== "idle" || !current || finished) return
+    const answerMs = Date.now() - questionShownAtRef.current
     const isCorrect = option === current.answer
     setChosen(option)
     setStatus(isCorrect ? "correct" : "wrong")
@@ -293,6 +303,7 @@ export function GameBoard({ mode }: { mode: Mode }) {
       a: current.a,
       b: current.b,
       correct: isCorrect,
+      answerMs,
     }).then((res) => {
       if (res.promotions.length > 0) {
         setPromoQueue((q) => [...q, ...res.promotions])
