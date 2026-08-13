@@ -9,6 +9,7 @@ import {
 } from "@/components/answer-celebration"
 import { BeltPromotion } from "@/components/belt-promotion"
 import { FactVisuals } from "@/components/fact-visuals"
+import { PersonalBestCelebration } from "@/components/personal-best-celebration"
 import { DAILY_GOAL_SECONDS, PiggyBank } from "@/components/piggy-bank"
 import {
   PiggyCelebration,
@@ -16,6 +17,7 @@ import {
 } from "@/components/piggy-celebration"
 import type { Mode, Question } from "@/lib/engine"
 import type { BeltPromotion as BeltPromotionData } from "@/lib/insights"
+import type { PersonalBestDelta } from "@/lib/personal-bests"
 import { getPlayerId, newSessionId } from "@/lib/player"
 import {
   type PiggyBankSummary,
@@ -88,6 +90,12 @@ export function GameBoard({ mode }: { mode: Mode }) {
     useState<PiggyCelebrationData | null>(null)
   const piggyRef = useRef<HTMLDivElement>(null)
 
+  // Personal Bests: a separate record-chasing system from belts/Piggy Bank
+  // (see lib/personal-bests.ts). Cleared on its own timer, independent of
+  // answer-advance, so it never slows the game down.
+  const [personalBestCelebration, setPersonalBestCelebration] =
+    useState<PersonalBestDelta | null>(null)
+
   // Today's active-practice seconds, toward the 15-minute goal. Only ticks
   // while this tab is visible and the kid has interacted recently.
   const [todaySeconds, setTodaySeconds] = useState(0)
@@ -116,6 +124,7 @@ export function GameBoard({ mode }: { mode: Mode }) {
     setPromoQueue([])
     setCelebration(null)
     setPiggyCelebration(null)
+    setPersonalBestCelebration(null)
     const first = await getQuestions(pid, BATCH, true)
     setQuestions(first)
   }, [])
@@ -313,6 +322,12 @@ export function GameBoard({ mode }: { mode: Mode }) {
       if (res.piggyBank) {
         setPiggy(res.piggyBank.summary)
       }
+      // Personal Bests are only known once the server confirms this
+      // answer, so (unlike streak/Piggy Bank) there's no optimistic
+      // version — the banner appears a beat after the answer lands.
+      if (res.personalBest) {
+        setPersonalBestCelebration(res.personalBest)
+      }
     })
 
     if (idx >= questions.length - 3) void loadMore()
@@ -408,6 +423,16 @@ export function GameBoard({ mode }: { mode: Mode }) {
           crossedDollar={piggyCelebration.crossedDollar}
           reachedWeeklyCap={piggyCelebration.reachedWeeklyCap}
           balanceAfterCents={piggyCelebration.balanceAfterCents}
+        />
+      )}
+      {personalBestCelebration && (
+        // Deliberately NOT keyed on idx — this overlays across a question
+        // change instead of restarting, so it stays on screen for its own
+        // ~1.6s regardless of how fast the child moves to the next question.
+        <PersonalBestCelebration
+          key={personalBestCelebration.key}
+          delta={personalBestCelebration}
+          onDone={() => setPersonalBestCelebration(null)}
         />
       )}
       {/* Top bar */}

@@ -28,6 +28,11 @@ import {
 } from "@/lib/insights"
 import { type TableMastery, computeTableMastery } from "@/lib/mastery"
 import {
+  type PersonalBestDelta,
+  computePersonalBests,
+  detectNewPersonalBest,
+} from "@/lib/personal-bests"
+import {
   type PiggyBankSummary,
   type WithdrawalEntry,
   computePiggyBank,
@@ -100,9 +105,13 @@ export async function recordAttempt(input: {
   b: number
   correct: boolean
   answerMs: number
-}): Promise<{ promotions: BeltPromotion[]; piggyBank: PiggyBankDelta | null }> {
+}): Promise<{
+  promotions: BeltPromotion[]
+  piggyBank: PiggyBankDelta | null
+  personalBest: PersonalBestDelta | null
+}> {
   if (!input.playerId || !input.sessionId)
-    return { promotions: [], piggyBank: null }
+    return { promotions: [], piggyBank: null, personalBest: null }
 
   const [before, withdrawals, awards] = await Promise.all([
     loadAttempts(input.playerId),
@@ -188,7 +197,15 @@ export async function recordAttempt(input: {
       .onConflictDoNothing()
   }
 
-  return { promotions, piggyBank }
+  // Personal Bests — a separate, independent record-chasing system (see
+  // lib/personal-bests.ts). Detecting the delta here, the same way as the
+  // Piggy Bank, is what drives the "NEW PERSONAL BEST!" celebration.
+  const personalBest = detectNewPersonalBest(
+    computePersonalBests(before),
+    computePersonalBests(after),
+  )
+
+  return { promotions, piggyBank, personalBest }
 }
 
 // Generate a batch of questions using the adaptive engine.

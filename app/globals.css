@@ -299,6 +299,14 @@
   animation: milestone-pop 0.85s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+/* ---- Personal Bests ---- */
+/* Same pop/hold/fade shape as the Piggy Bank milestone banner, just
+   stretched to ~1.6s so a broken record stays readable a beat longer
+   without turning into a blocking modal. */
+.animate-personal-best-pop {
+  animation: milestone-pop 1.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
 .animate-streak-pop {
   animation: streak-pop 0.35s ease-out;
 }
@@ -327,6 +335,7 @@
   .animate-star-burst,
   .animate-fly-up,
   .animate-milestone-pop,
+  .animate-personal-best-pop,
   .animate-streak-pop,
   .animate-coin-fly,
   .animate-piggy-shake,

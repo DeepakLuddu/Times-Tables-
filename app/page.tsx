@@ -1,4 +1,4 @@
-import { Clock, Flame, ShieldCheck, Users } from "lucide-react"
+import { Clock, Flame, ShieldCheck, Trophy, Users } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
 
@@ -60,6 +60,21 @@ export default function HomePage() {
             </span>
             <span className="font-sans text-sm text-foreground/60">
               See your belts and what to work on next.
+            </span>
+          </span>
+        </Link>
+
+        <Link
+          href="/personal-bests"
+          className="group flex items-center gap-4 rounded-3xl border border-border px-6 py-5 text-foreground shadow-sm transition-colors hover:bg-muted"
+        >
+          <Trophy className="size-8 shrink-0 text-primary" />
+          <span className="flex flex-col">
+            <span className="font-display text-2xl font-semibold">
+              Personal Bests
+            </span>
+            <span className="font-sans text-sm text-foreground/60">
+              Your greatest maths achievements.
             </span>
           </span>
         </Link>
