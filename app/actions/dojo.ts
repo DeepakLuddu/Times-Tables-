@@ -38,6 +38,7 @@ import {
   computePiggyBank,
   crossedMultiple,
 } from "@/lib/piggybank"
+import { type DetailedSession, buildSessionLog } from "@/lib/session-log"
 import { eq } from "drizzle-orm"
 
 async function loadWithdrawals(playerId: string): Promise<WithdrawalEntry[]> {
@@ -296,4 +297,17 @@ export async function getParentReport(
 ): Promise<ParentReport> {
   const attempts = await loadAttempts(playerId)
   return parentReport(attempts)
+}
+
+// The detailed, per-session activity log — moved here from the
+// child-facing Belt Wall (which now shows Recent Wins instead) since this
+// raw level of detail is what a parent reviewing progress actually wants.
+export async function getSessionLog(
+  playerId: string,
+): Promise<DetailedSession[]> {
+  const [attempts, awards] = await Promise.all([
+    loadAttempts(playerId),
+    loadBeltAwards(playerId),
+  ])
+  return buildSessionLog(attempts, awards)
 }

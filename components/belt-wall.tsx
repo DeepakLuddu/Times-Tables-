@@ -3,10 +3,13 @@
 import { type BeltWallData, getBeltWallData } from "@/app/actions/dojo"
 import { Belt } from "@/components/belt"
 import { BeltDetail } from "@/components/belt-detail"
+import { BeltJourney } from "@/components/belt-journey"
 import { AnimatedPercentLabel, MasteryBar } from "@/components/mastery-bar"
+import { RecentWinsSection } from "@/components/recent-wins-section"
 import type { TableMastery } from "@/lib/mastery"
 import { getPlayerId } from "@/lib/player"
-import { ArrowRight, House, Sparkles } from "lucide-react"
+import { cn } from "@/lib/utils"
+import { House, Sparkles } from "lucide-react"
 import Link from "next/link"
 import { useEffect, useState } from "react"
 
@@ -21,17 +24,87 @@ function factChip(a: number, b: number, key?: string) {
   )
 }
 
-const MODE_LABEL: Record<string, string> = {
-  practice: "Practice",
-  sprint: "Sprint",
+// One belt card. Kept deliberately minimal on the main grid — table
+// number, belt graphic, percent, bar, and distance to the next belt.
+// Everything else (the 8-part breakdown) only shows up in BeltDetail.
+function BeltCard({
+  mastery,
+  onTap,
+}: {
+  mastery: TableMastery
+  onTap: () => void
+}) {
+  const isChallengeReady = mastery.state === "challengeReady"
+  const isMastered = mastery.state === "mastered"
+
+  if (isMastered) {
+    return (
+      <button
+        type="button"
+        onClick={onTap}
+        className="flex flex-col items-center gap-1.5 rounded-2xl bg-belt-black px-3 py-4 shadow-md ring-2 ring-primary transition-transform active:scale-95"
+      >
+        <span className="font-mono text-2xl font-bold text-white">
+          {mastery.table}
+        </span>
+        <Belt tier="black" className="h-6 w-14" />
+        <span className="mt-1 font-mono text-xs font-bold text-primary">
+          100%
+        </span>
+        <span className="text-center font-display text-[10px] font-bold leading-tight text-primary">
+          MASTERED ✓
+        </span>
+      </button>
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onTap}
+      className="flex flex-col items-center gap-1.5 rounded-2xl bg-card px-3 py-4 text-card-foreground shadow-md transition-transform active:scale-95"
+    >
+      <span className="font-mono text-2xl font-bold">{mastery.table}</span>
+      <Belt
+        tier={mastery.belt}
+        locked={isChallengeReady}
+        className="h-6 w-14"
+      />
+      {!isChallengeReady && (
+        <>
+          <MasteryBar
+            percent={mastery.percent}
+            size="sm"
+            className="mt-1"
+          />
+          <AnimatedPercentLabel
+            percent={mastery.percent}
+            className="font-mono text-xs font-semibold text-card-foreground/70"
+          />
+        </>
+      )}
+      <span
+        className={cn(
+          "text-center font-sans text-[10px] font-medium leading-tight",
+          isChallengeReady
+            ? "mt-1 font-display font-bold text-primary"
+            : "text-card-foreground/50",
+        )}
+      >
+        {mastery.stateLabel}
+      </span>
+    </button>
+  )
 }
 
 export function BeltWall() {
   const [data, setData] = useState<BeltWallData | null>(null)
   const [selected, setSelected] = useState<TableMastery | null>(null)
+  const [playerId, setPlayerId] = useState("")
 
   useEffect(() => {
     const pid = getPlayerId()
+    setPlayerId(pid)
     void getBeltWallData(pid).then(setData)
   }, [])
 
@@ -59,28 +132,12 @@ export function BeltWall() {
         </p>
       ) : (
         <>
+          <BeltJourney />
+
           {/* Belt grid */}
-          <div className="mt-6 grid grid-cols-3 gap-3 sm:grid-cols-4">
+          <div className="mt-4 grid grid-cols-3 gap-3 sm:grid-cols-4">
             {data.mastery.map((m) => (
-              <button
-                key={m.table}
-                type="button"
-                onClick={() => setSelected(m)}
-                className="flex flex-col items-center gap-1.5 rounded-2xl bg-card px-3 py-4 text-card-foreground shadow-md transition-transform active:scale-95"
-              >
-                <span className="font-mono text-2xl font-bold">
-                  {m.table}
-                </span>
-                <Belt tier={m.belt} className="h-6 w-14" />
-                <MasteryBar percent={m.percent} size="sm" className="mt-1" />
-                <AnimatedPercentLabel
-                  percent={m.percent}
-                  className="font-mono text-xs font-semibold text-card-foreground/70"
-                />
-                <span className="text-center font-sans text-[10px] font-medium leading-tight text-card-foreground/50">
-                  {m.stateLabel}
-                </span>
-              </button>
+              <BeltCard key={m.table} mastery={m} onTap={() => setSelected(m)} />
             ))}
           </div>
 
@@ -122,48 +179,11 @@ export function BeltWall() {
             )}
           </section>
 
-          {/* Session recap */}
-          <section className="mt-8 pb-6">
-            <h2 className="font-display text-xl font-semibold text-foreground">
-              Past sessions
-            </h2>
-            {data.sessions.length === 0 ? (
-              <p className="mt-2 font-sans text-sm text-foreground/50">
-                No sessions yet. Head back and start training.
-              </p>
-            ) : (
-              <ul className="mt-3 flex flex-col gap-3">
-                {data.sessions.map((s) => (
-                  <li
-                    key={s.sessionId}
-                    className="rounded-2xl bg-card px-5 py-4 text-card-foreground shadow-md"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-display text-lg font-semibold">
-                        {MODE_LABEL[s.mode] ?? s.mode}
-                      </span>
-                      <span className="font-mono text-sm font-semibold text-card-foreground/60">
-                        {s.correct}/{s.questions} · {s.accuracy}%
-                      </span>
-                    </div>
-                    {s.insights.length > 0 && (
-                      <ul className="mt-2 flex flex-col gap-1.5">
-                        {s.insights.map((ins, i) => (
-                          <li
-                            key={i}
-                            className="flex items-start gap-2 font-sans text-sm text-card-foreground/80"
-                          >
-                            <ArrowRight className="mt-0.5 size-4 shrink-0 text-secondary" />
-                            <span>{ins.text}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
+          {/* Best thing today / Next challenge / Recent Wins — replaces
+              the old raw "Past Sessions" transaction log. That detailed
+              per-session data still exists; it now lives in the Parent
+              section's Session History instead. */}
+          <RecentWinsSection playerId={playerId} />
         </>
       )}
     </main>

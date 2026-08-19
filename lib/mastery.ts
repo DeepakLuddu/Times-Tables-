@@ -17,6 +17,7 @@
 import {
   type Attempt,
   type Belt,
+  BELT_LABEL,
   computeFactStats,
   factKey,
   normalizeFact,
@@ -58,19 +59,46 @@ export interface MasteryComponent {
   complete: boolean
 }
 
-export type MasteryState =
-  | "needsPractice"
-  | "buildingMastery"
-  | "almostThere"
-  | "challengeReady"
-  | "mastered"
+// Only three states actually change how a card behaves/renders now — the
+// old "Needs Practice / Building Mastery / Almost There" labels were
+// removed in favour of a "X% to (next belt)" distance readout (see
+// nextBeltInfo below), which is more motivating and avoids a low-value
+// label duplicating what the belt colour + percent already say.
+export type MasteryState = "progress" | "challengeReady" | "mastered"
 
-export const MASTERY_STATE_LABEL: Record<MasteryState, string> = {
-  needsPractice: "Needs Practice",
-  buildingMastery: "Building Mastery",
-  almostThere: "Almost There",
-  challengeReady: "Belt Challenge Ready",
-  mastered: "MASTERED",
+// The display belt ladder — seven tiers, each with a minimum percent. This
+// is presentation only: it maps the (unchanged) strict mastery percent to
+// a colour band and a "how far to the next one" distance. It never affects
+// how the percent itself is calculated.
+export const BELT_THRESHOLDS: { belt: Belt; min: number }[] = [
+  { belt: "white", min: 0 },
+  { belt: "yellow", min: 25 },
+  { belt: "green", min: 45 },
+  { belt: "blue", min: 60 },
+  { belt: "purple", min: 75 },
+  { belt: "brown", min: 90 },
+  { belt: "black", min: 99 },
+]
+
+function beltForPercent(percent: number): Belt {
+  let current: Belt = "white"
+  for (const t of BELT_THRESHOLDS) {
+    if (percent >= t.min) current = t.belt
+  }
+  return current
+}
+
+// The next belt up and how many percentage points remain to reach it, or
+// null once there's nothing further up the ladder (i.e. already black).
+function nextBeltInfo(
+  percent: number,
+): { belt: Belt; percentNeeded: number } | null {
+  for (const t of BELT_THRESHOLDS) {
+    if (percent < t.min) {
+      return { belt: t.belt, percentNeeded: t.min - percent }
+    }
+  }
+  return null
 }
 
 export interface TableMastery {
@@ -78,7 +106,15 @@ export interface TableMastery {
   percent: number // 0-95, or 99, or 100 — never anything in between 96-98
   belt: Belt
   state: MasteryState
+  /**
+   * Short, ready-to-render distance readout: "14% to Green Belt" while
+   * building, "BLACK BELT CHALLENGE READY" at 99%, "MASTERED" at 100%.
+   */
   stateLabel: string
+  /** Belt this table is working toward next, or null once mastered. */
+  nextBelt: Belt | null
+  /** Percentage points needed to reach nextBelt, or null once mastered. */
+  percentToNext: number | null
   mastered: boolean
   /** All 8 weighted components — the full accounting behind the percent. */
   components: MasteryComponent[]
@@ -220,23 +256,6 @@ function buildComponents(
   return { components, requiredMap }
 }
 
-function beltForPercent(percent: number): Belt {
-  if (percent >= 100) return "black"
-  if (percent >= 99) return "brown"
-  if (percent >= 80) return "blue"
-  if (percent >= 65) return "green"
-  if (percent >= 50) return "yellow"
-  return "white"
-}
-
-function stateForPercent(percent: number): MasteryState {
-  if (percent >= 100) return "mastered"
-  if (percent >= 99) return "challengeReady"
-  if (percent >= 80) return "almostThere"
-  if (percent >= 50) return "buildingMastery"
-  return "needsPractice"
-}
-
 function buildRecommendation(
   table: number,
   allAttempts: Attempt[],
@@ -290,7 +309,9 @@ export function computeTableMastery(
       percent: 100,
       belt: "black",
       state: "mastered",
-      stateLabel: MASTERY_STATE_LABEL.mastered,
+      stateLabel: "MASTERED",
+      nextBelt: null,
+      percentToNext: null,
       mastered: true,
       components,
       recommendation: buildRecommendation(table, allAttempts, true),
@@ -307,14 +328,36 @@ export function computeTableMastery(
   // 0-95% while building, capped below 100 until every requirement is met;
   // 99% the instant everything is complete but not yet formally awarded.
   const percent = allComplete ? 99 : Math.min(95, Math.round(rawPercent))
-  const state = stateForPercent(percent)
+  const belt = beltForPercent(percent)
+
+  if (percent >= 99) {
+    return {
+      table,
+      percent,
+      belt,
+      state: "challengeReady",
+      stateLabel: "BLACK BELT CHALLENGE READY",
+      nextBelt: null,
+      percentToNext: null,
+      mastered: false,
+      components,
+      recommendation: buildRecommendation(table, allAttempts, false),
+    }
+  }
+
+  const next = nextBeltInfo(percent)
+  const stateLabel = next
+    ? `${next.percentNeeded}% to ${BELT_LABEL[next.belt]} Belt`
+    : "MASTERED"
 
   return {
     table,
     percent,
-    belt: beltForPercent(percent),
-    state,
-    stateLabel: MASTERY_STATE_LABEL[state],
+    belt,
+    state: "progress",
+    stateLabel,
+    nextBelt: next?.belt ?? null,
+    percentToNext: next?.percentNeeded ?? null,
     mastered: false,
     components,
     recommendation: buildRecommendation(table, allAttempts, false),

@@ -3,6 +3,7 @@
 import { getParentReport } from "@/app/actions/dojo"
 import { Belt } from "@/components/belt"
 import { PiggyBankParent } from "@/components/piggy-bank-parent"
+import { SessionHistory } from "@/components/session-history"
 import type { ParentReport as Report } from "@/lib/insights"
 import { getPlayerId } from "@/lib/player"
 import { cn } from "@/lib/utils"
@@ -174,6 +175,10 @@ export function ParentReport() {
               ))}
             </ul>
           </section>
+
+          {/* Detailed session-by-session log — moved here from the
+              child-facing Belt Wall, which now shows Recent Wins instead. */}
+          <SessionHistory playerId={playerId} />
 
           {/* Recommendation */}
           <section className="mt-4 mb-6 flex items-start gap-3 rounded-2xl border border-primary/40 bg-primary/10 px-5 py-4">

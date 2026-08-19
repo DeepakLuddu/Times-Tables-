@@ -245,15 +245,32 @@ export function explainFact(a: number, b: number): string[] {
 
 // ---- Belt tiers (table level) ----
 
+// "purple" was added for the Belt Wall's mastery-percentage display (see
+// lib/mastery.ts) to give a 7-tier ladder with more granular motivation
+// steps. The OLD simple accuracy-based beltFor() below (still used only by
+// the Parent Report, by earlier deliberate scope decision) never produces
+// "purple" — it's a strict subset of this type, which is fine since a
+// function isn't required to use every value of the type it returns.
 export const BELT_ORDER = [
   "white",
   "yellow",
   "green",
   "blue",
+  "purple",
   "brown",
   "black",
 ] as const
 export type Belt = (typeof BELT_ORDER)[number]
+
+export const BELT_LABEL: Record<Belt, string> = {
+  white: "White",
+  yellow: "Yellow",
+  green: "Green",
+  blue: "Blue",
+  purple: "Purple",
+  brown: "Brown",
+  black: "Black",
+}
 
 export function beltFor(attempts: number, accuracy: number): Belt {
   if (attempts < 8) return "white"

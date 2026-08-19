@@ -1,22 +1,15 @@
 "use client"
 
 import { Belt } from "@/components/belt"
-import type { Belt as BeltTier } from "@/lib/engine"
+import { BELT_LABEL, type Belt as BeltTier } from "@/lib/engine"
+import { cn } from "@/lib/utils"
 import { useMemo } from "react"
-
-const BELT_LABEL: Record<BeltTier, string> = {
-  white: "White",
-  yellow: "Yellow",
-  green: "Green",
-  blue: "Blue",
-  brown: "Brown",
-  black: "Black",
-}
 
 export const CONFETTI_COLORS = [
   "bg-primary",
   "bg-secondary",
   "bg-belt-blue",
+  "bg-belt-purple",
   "bg-belt-yellow",
   "bg-belt-brown",
 ]
@@ -30,23 +23,35 @@ export function BeltPromotion({
   belt: BeltTier
   onDismiss: () => void
 }) {
+  // A genuine Black Belt only ever arrives here at true 100% mastery (see
+  // app/actions/dojo.ts — the 99% "Belt Challenge Ready" state is always
+  // awarded in the same instant it's reached, so `promotions` never fires
+  // for it separately). It's the biggest achievement in the app, so it
+  // gets a visibly bigger celebration than every other belt.
+  const isBlackBelt = belt === "black"
+  const confettiCount = isBlackBelt ? 48 : 28
+
   // Deterministic-enough confetti generated once per mount.
   const confetti = useMemo(
     () =>
-      Array.from({ length: 28 }, (_, i) => ({
+      Array.from({ length: confettiCount }, (_, i) => ({
         left: Math.random() * 100,
         delay: Math.random() * 0.5,
         duration: 1.8 + Math.random() * 1.4,
         color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
       })),
-    [],
+    [confettiCount],
   )
 
   return (
     <div
       role="dialog"
       aria-modal="true"
-      aria-label={`New belt earned: ${BELT_LABEL[belt]} belt in the ${table} times table`}
+      aria-label={
+        isBlackBelt
+          ? `Black Belt earned in the ${table} times table — fully mastered`
+          : `New belt earned: ${BELT_LABEL[belt]} belt in the ${table} times table`
+      }
       className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-background/85 px-6 backdrop-blur-sm"
     >
       {/* Confetti */}
@@ -68,7 +73,10 @@ export function BeltPromotion({
         {/* Shine rays behind the badge */}
         <div className="relative flex items-center justify-center">
           <div
-            className="animate-ray-spin absolute size-64 opacity-30"
+            className={cn(
+              "animate-ray-spin absolute opacity-30",
+              isBlackBelt ? "size-80" : "size-64",
+            )}
             aria-hidden="true"
             style={{
               background:
@@ -82,7 +90,14 @@ export function BeltPromotion({
           />
 
           {/* Belt badge */}
-          <div className="animate-belt-pop-in relative flex size-44 flex-col items-center justify-center gap-3 rounded-full border-4 border-primary bg-card px-6 shadow-2xl">
+          <div
+            className={cn(
+              "animate-belt-pop-in relative flex flex-col items-center justify-center gap-3 rounded-full border-4 bg-card px-6 shadow-2xl",
+              isBlackBelt
+                ? "size-52 border-belt-black"
+                : "size-44 border-primary",
+            )}
+          >
             <span className="font-mono text-5xl font-bold text-card-foreground">
               {table}
             </span>
@@ -92,13 +107,15 @@ export function BeltPromotion({
 
         <div className="animate-badge-rise mt-8 flex flex-col items-center">
           <p className="font-display text-sm font-semibold uppercase tracking-widest text-primary">
-            New belt earned
+            {isBlackBelt ? "Belt Challenge passed!" : "New belt earned"}
           </p>
           <h2 className="mt-1 text-balance font-display text-4xl font-bold text-foreground">
             {BELT_LABEL[belt]} Belt
           </h2>
           <p className="mt-2 text-balance font-sans text-base text-foreground/70">
-            You leveled up your {table} times table. Keep it going!
+            {isBlackBelt
+              ? `You've fully mastered your ${table} times table. That's the whole journey — nice work.`
+              : `You leveled up your ${table} times table. Keep it going!`}
           </p>
 
           <button

@@ -32,6 +32,7 @@
   --color-belt-yellow: var(--belt-yellow);
   --color-belt-green: var(--belt-green);
   --color-belt-blue: var(--belt-blue);
+  --color-belt-purple: var(--belt-purple);
   --color-belt-brown: var(--belt-brown);
   --color-belt-black: var(--belt-black);
 
@@ -85,6 +86,7 @@
   --belt-yellow: #e8c547;
   --belt-green: #4c9a6a;
   --belt-blue: #3b7dd8;
+  --belt-purple: #8b5cd6;
   --belt-brown: #9c6b3f;
   --belt-black: #171c30;
 }
