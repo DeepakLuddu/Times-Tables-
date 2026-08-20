@@ -39,6 +39,7 @@ import {
 } from "@/lib/subjects/shared"
 import type {
   BlankSlot,
+  HelpMethod,
   PracticeSubject,
   QuestionKind,
   Subject,
@@ -160,6 +161,8 @@ export async function recordAttempt(input: {
   bandIndex?: number
   questionKind?: QuestionKind
   blankSlot?: BlankSlot
+  /** Which wrong-answer help method this attempt followed, if it was a post-help retry. */
+  helpMethod?: HelpMethod
 }): Promise<{
   promotions: BeltPromotion[]
   piggyBank: PiggyBankDelta | null
@@ -197,6 +200,7 @@ export async function recordAttempt(input: {
     bandIndex: input.bandIndex ?? null,
     questionKind: input.questionKind ?? "solve",
     blankSlot: input.blankSlot ?? null,
+    helpMethod: input.helpMethod ?? null,
   })
 
   const newAttempt: Attempt = {
@@ -297,6 +301,22 @@ export async function getMixedMathsEligibility(playerId: string): Promise<boolea
     (c) => c >= MIXED_MATHS_MIN_ATTEMPTS_PER_SUBJECT,
   ).length
   return qualifyingSubjects >= MIXED_MATHS_MIN_SUBJECTS
+}
+
+// Used by Division's "Think it" wrong-answer help (Use Multiplication): a
+// soft narrative link only, checking whether the player has independently
+// demonstrated the mirrored multiplication fact — never used to shortcut
+// division's own mastery, which is still earned entirely separately.
+export async function getMultiplicationMasteryFor(
+  playerId: string,
+  a: number,
+  b: number,
+): Promise<boolean> {
+  if (!playerId) return false
+  const attempts = await loadAttempts(playerId, "multiplication")
+  const stats = computeFactStatsFor(multiplicationEngine, attempts)
+  const [x, y] = multiplicationEngine.normalizeFact(a, b)
+  return stats.get(multiplicationEngine.factKey(x, y))?.mastered ?? false
 }
 
 // Mixed Maths draws each question from a different subject's own pool,

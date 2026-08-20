@@ -43,6 +43,11 @@ export const attempts = pgTable("attempts", {
   questionKind: text("questionKind").notNull().default("solve"),
   // Which slot was blanked for a 'missingOperand' question: 'a' | 'b' | 'result'.
   blankSlot: text("blankSlot"),
+  // Which wrong-answer help method ('see' | 'move' | 'think') this attempt
+  // followed, set only on the retry attempt after a help interaction — null
+  // on the original wrong attempt and every other normal attempt. A soft
+  // signal for future recommendations, not a fixed "learning style" label.
+  helpMethod: text("helpMethod"),
 })
 
 export type AttemptRow = typeof attempts.$inferSelect

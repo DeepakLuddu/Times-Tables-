@@ -17,6 +17,12 @@ export type PracticeSubject = Subject | "mixed"
 export type QuestionKind = "solve" | "missingOperand"
 export type BlankSlot = "a" | "b"
 
+// Which wrong-answer teaching method (see components/help/) a retry
+// attempt followed — a soft signal for future recommendations, never a
+// fixed "learning style" label. Addition/Subtraction/Division only;
+// multiplication keeps its separate FactVisuals experience untouched.
+export type HelpMethod = "see" | "move" | "think"
+
 export interface SubjectQuestion {
   a: number
   b: number
