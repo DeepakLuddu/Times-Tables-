@@ -4,6 +4,7 @@ import { Belt } from "@/components/belt"
 import { AnimatedPercentLabel, MasteryBar } from "@/components/mastery-bar"
 import { BELT_LABEL } from "@/lib/engine"
 import type { MasteryComponent, TableMastery } from "@/lib/mastery"
+import { getSubjectEngine } from "@/lib/subjects"
 import { cn } from "@/lib/utils"
 import { Check, X } from "lucide-react"
 
@@ -34,12 +35,13 @@ export function BeltDetail({
 
   const isChallengeReady = mastery.state === "challengeReady"
   const isMastered = mastery.state === "mastered"
+  const skillLabel = getSubjectEngine(mastery.subject).skillLabel(mastery.table)
 
   return (
     <div
       role="dialog"
       aria-modal="true"
-      aria-label={`${mastery.table} times table mastery detail`}
+      aria-label={`${skillLabel} mastery detail`}
       className="fixed inset-0 z-50 flex items-center justify-center bg-background/85 px-6 backdrop-blur-sm"
       onClick={onClose}
     >
@@ -56,7 +58,7 @@ export function BeltDetail({
           </span>
           <div>
             <p className="font-display text-lg font-semibold">
-              {mastery.table} Times Table
+              {skillLabel}
             </p>
             <Belt
               tier={mastery.belt}

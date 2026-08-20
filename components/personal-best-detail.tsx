@@ -28,7 +28,7 @@ function currentValue(record: AnyRecord): string {
     case "bestAccuracy":
       return `${record.accuracy}%`
     case "mostImproved":
-      return record.table ? `${record.table} Times Table` : "—"
+      return record.skillLabel ?? "—"
   }
 }
 

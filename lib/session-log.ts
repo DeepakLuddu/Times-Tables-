@@ -15,7 +15,8 @@ import {
 } from "./engine"
 import { allSessionSummaries } from "./insights"
 import { computeTableMastery } from "./mastery"
-import { WEEKLY_CAP_CENTS, weekStartOf } from "./piggybank"
+import { type EarningAttempt, allocateWeeklyEarnings, weekStartOf } from "./piggybank"
+import { multiplicationEngine } from "./subjects/multiplication"
 
 // How many of the most recent sessions to build full detail for — bounds
 // the (session x table) replay cost; older history is still in the raw
@@ -45,6 +46,12 @@ function weekKeyOf(d: Date): string {
 export function buildSessionLog(
   attempts: Attempt[],
   awards: Map<number, Date>,
+  // The player's FULL, unfiltered attempts log (every subject) — needed to
+  // compute an accurate "earned this session" figure now that the Piggy
+  // Bank's weekly cap is shared across all four subjects. Using only the
+  // (multiplication-filtered) `attempts` above would understate how much
+  // of the week's cap other subjects' practice had already used.
+  allAttempts: EarningAttempt[] = [],
 ): DetailedSession[] {
   const sorted = [...attempts].sort(
     (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
@@ -95,8 +102,18 @@ export function buildSessionLog(
     const masteryChanges: DetailedSession["masteryChanges"] = []
     const beltChanges: DetailedSession["beltChanges"] = []
     for (const t of tablesPractised) {
-      const beforeM = computeTableMastery(t, before, awards.get(t) ?? null)
-      const afterM = computeTableMastery(t, including, awards.get(t) ?? null)
+      const beforeM = computeTableMastery(
+        multiplicationEngine,
+        t,
+        before,
+        awards.get(t) ?? null,
+      )
+      const afterM = computeTableMastery(
+        multiplicationEngine,
+        t,
+        including,
+        awards.get(t) ?? null,
+      )
       if (afterM.percent !== beforeM.percent) {
         masteryChanges.push({
           table: t,
@@ -109,24 +126,24 @@ export function buildSessionLog(
       }
     }
 
-    // Piggy Bank earnings for this session: correct answers, capped by
-    // whatever weekly allowance remained at the point each one landed.
-    let piggyEarnedCents = 0
-    const weekTotalsSoFar = new Map<string, number>()
-    for (const a of before) {
-      if (!a.correct) continue
-      const wk = weekKeyOf(a.createdAt)
-      weekTotalsSoFar.set(wk, (weekTotalsSoFar.get(wk) ?? 0) + 1)
-    }
-    for (const a of sessionAttempts) {
-      if (!a.correct) continue
-      const wk = weekKeyOf(a.createdAt)
-      const countBefore = weekTotalsSoFar.get(wk) ?? 0
-      const earnedBefore = Math.min(countBefore, WEEKLY_CAP_CENTS)
-      const earnedAfter = Math.min(countBefore + 1, WEEKLY_CAP_CENTS)
-      piggyEarnedCents += earnedAfter - earnedBefore
-      weekTotalsSoFar.set(wk, countBefore + 1)
-    }
+    // Piggy Bank earnings for this session, via the one canonical allocator
+    // (lib/piggybank.ts's allocateWeeklyEarnings) — computed as the delta
+    // in this session's week bucket between "everything up to just before
+    // this session" and "everything through this session's last answer",
+    // using the FULL cross-subject attempts log so another subject's
+    // practice earlier in the week is correctly accounted for.
+    const weekOfSession = weekKeyOf(first.createdAt)
+    const allBefore = allAttempts.filter(
+      (a) => a.createdAt.getTime() < first.createdAt.getTime(),
+    )
+    const allThroughSession = allAttempts.filter(
+      (a) => a.createdAt.getTime() <= last.createdAt.getTime(),
+    )
+    const centsBefore =
+      allocateWeeklyEarnings(allBefore).get(weekOfSession)?.totalCents ?? 0
+    const centsThrough =
+      allocateWeeklyEarnings(allThroughSession).get(weekOfSession)?.totalCents ?? 0
+    const piggyEarnedCents = Math.max(0, centsThrough - centsBefore)
 
     return {
       sessionId: s.sessionId,

@@ -2,6 +2,8 @@
 
 import { Belt } from "@/components/belt"
 import { BELT_LABEL, type Belt as BeltTier } from "@/lib/engine"
+import { getSubjectEngine } from "@/lib/subjects"
+import type { Subject } from "@/lib/subjects/types"
 import { cn } from "@/lib/utils"
 import { useMemo } from "react"
 
@@ -17,12 +19,15 @@ export const CONFETTI_COLORS = [
 export function BeltPromotion({
   table,
   belt,
+  subject = "multiplication",
   onDismiss,
 }: {
   table: number
   belt: BeltTier
+  subject?: Subject
   onDismiss: () => void
 }) {
+  const skillLabel = getSubjectEngine(subject).skillLabel(table)
   // A genuine Black Belt only ever arrives here at true 100% mastery (see
   // app/actions/dojo.ts — the 99% "Belt Challenge Ready" state is always
   // awarded in the same instant it's reached, so `promotions` never fires
@@ -49,8 +54,8 @@ export function BeltPromotion({
       aria-modal="true"
       aria-label={
         isBlackBelt
-          ? `Black Belt earned in the ${table} times table — fully mastered`
-          : `New belt earned: ${BELT_LABEL[belt]} belt in the ${table} times table`
+          ? `Black Belt earned in ${skillLabel} — fully mastered`
+          : `New belt earned: ${BELT_LABEL[belt]} belt in ${skillLabel}`
       }
       className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-background/85 px-6 backdrop-blur-sm"
     >
@@ -114,8 +119,8 @@ export function BeltPromotion({
           </h2>
           <p className="mt-2 text-balance font-sans text-base text-foreground/70">
             {isBlackBelt
-              ? `You've fully mastered your ${table} times table. That's the whole journey — nice work.`
-              : `You leveled up your ${table} times table. Keep it going!`}
+              ? `You've fully mastered ${skillLabel}. That's the whole journey — nice work.`
+              : `You leveled up ${skillLabel}. Keep it going!`}
           </p>
 
           <button

@@ -2,12 +2,19 @@
 
 import {
   DAILY_GOAL_SECONDS,
+  SUBJECT_WEEKLY_CAP_CENTS,
   type PiggyBankSummary,
   formatCents,
   formatMinSec,
 } from "@/lib/piggybank"
+import { SUBJECT_ENGINES } from "@/lib/subjects"
 import { cn } from "@/lib/utils"
 import { forwardRef } from "react"
+
+// Short, child-friendly subject labels for the compact balance row — the
+// full engine labels ("Multiplication") are fine at this size, kept here
+// only in case a future subject needs an abbreviation.
+const AVAILABLE_SUBJECTS = Object.keys(SUBJECT_ENGINES) as (keyof typeof SUBJECT_ENGINES)[]
 
 export { DAILY_GOAL_SECONDS }
 
@@ -76,6 +83,26 @@ export const PiggyBank = forwardRef<
             )}
             style={{ width: `${weeklyPct}%` }}
           />
+        </div>
+
+        {/* Compact per-subject status — a simple checkmark once a subject's
+            own $1 balanced share is full, otherwise its running total.
+            Deliberately small/subdued: this is a hint, not a ledger. */}
+        <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 font-sans text-[11px] text-card-foreground/50">
+          {AVAILABLE_SUBJECTS.map((subject) => {
+            const cents = summary.weeklyBreakdown.bySubjectCents[subject] ?? 0
+            const full = cents >= SUBJECT_WEEKLY_CAP_CENTS
+            return (
+              <span key={subject} className="flex items-center gap-1">
+                {SUBJECT_ENGINES[subject]!.label}
+                {full ? (
+                  <span className="text-secondary">✓</span>
+                ) : (
+                  <span className="font-mono tabular-nums">{formatCents(cents)}</span>
+                )}
+              </span>
+            )
+          })}
         </div>
       </div>
 

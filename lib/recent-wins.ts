@@ -10,27 +10,29 @@
 // recent LOOKBACK_SESSIONS sessions — Recent Wins only ever needs to
 // answer "what happened lately," not reconstruct a lifetime archive.
 
-import {
-  BELT_LABEL,
-  type Attempt,
-  type Belt,
-  beltIndex,
-  computeFactStats,
-  factKey,
-  normalizeFact,
-} from "./engine"
+import { BELT_LABEL, type Attempt, type Belt, beltIndex } from "./engine"
 import { allSessionSummaries } from "./insights"
 import { type TableMastery, computeTableMastery } from "./mastery"
+import { getSubjectEngine, SUBJECT_ENGINES } from "./subjects"
+import type { Subject, SubjectEngine } from "./subjects/types"
 import {
   type PersonalBests,
   formatShortDate as formatPersonalBestDate,
 } from "./personal-bests"
 import {
+  type EarningAttempt,
   WEEKLY_CAP_CENTS,
+  allocateOneAnswer,
   crossedMultiple,
+  emptyBucket,
   formatCents,
-  weekStartOf,
+  weekKey as piggyWeekKey,
 } from "./piggybank"
+
+// Every subject with a registered SubjectEngine gets its own belt/fact-
+// mastery scan — addition/subtraction join automatically once registered
+// in lib/subjects/index.ts, no changes needed here.
+const AVAILABLE_SUBJECTS = Object.keys(SUBJECT_ENGINES) as Subject[]
 
 const LOOKBACK_SESSIONS = 20
 const RECENT_WINS_LIMIT = 6
@@ -64,10 +66,6 @@ export interface RecentWinsData {
   wins: WinEvent[]
   bestToday: string | null
   nextChallenge: string
-}
-
-function weekKeyOf(d: Date): string {
-  return weekStartOf(d).toISOString().slice(0, 10)
 }
 
 // Local calendar day, matching lib/piggybank.ts's localDateKey convention
@@ -105,8 +103,12 @@ function sessionBoundaries(
 }
 
 // ---- Belt tier crossings: new belt reached, Belt Challenge unlocked (99%), Black Belt earned (100%) ----
+// Scoped to one subject at a time (see computeRecentWins, which runs this
+// once per subject and merges the results) — a skill index like "7" means
+// something different per subject, so mixing them here would be wrong.
 
-function beltCrossingEvents(
+function beltCrossingEventsForSubject(
+  engine: SubjectEngine,
   sorted: Attempt[],
   awards: Map<number, Date>,
 ): WinEvent[] {
@@ -124,11 +126,13 @@ function beltCrossingEvents(
   const seedAttempts = seedHasLookbackGap
     ? cumulativeAt(seedBoundary.endTime)
     : []
-  for (let t = 1; t <= 12; t++) {
+  for (const skill of engine.skills) {
+    const t = skill.index
     if (seedHasLookbackGap) {
       const alreadyAwarded =
         awards.has(t) && awards.get(t)!.getTime() <= seedBoundary.endTime
       const m = computeTableMastery(
+        engine,
         t,
         seedAttempts,
         alreadyAwarded ? awards.get(t)! : null,
@@ -144,10 +148,13 @@ function beltCrossingEvents(
   const events: WinEvent[] = []
   for (const b of recent) {
     const cumulative = cumulativeAt(b.endTime)
-    for (let t = 1; t <= 12; t++) {
+    for (const skill of engine.skills) {
+      const t = skill.index
+      const label = engine.skillLabel(t)
       const awardedNow =
         awards.has(t) && awards.get(t)!.getTime() <= b.endTime
       const m = computeTableMastery(
+        engine,
         t,
         cumulative,
         awardedNow ? awards.get(t)! : null,
@@ -158,8 +165,8 @@ function beltCrossingEvents(
           type: "blackBeltEarned",
           date: awards.get(t)!.toISOString(),
           icon: "🥋",
-          text: `${t}s earned Black Belt!`,
-          sentence: `You earned your Black Belt in the ${t} times table today.`,
+          text: `${label} earned Black Belt!`,
+          sentence: `You earned your Black Belt in ${label} today.`,
           priority: 0,
         })
         lastAwarded.set(t, true)
@@ -172,8 +179,8 @@ function beltCrossingEvents(
           type: "beltChallengeUnlocked",
           date: new Date(b.endTime).toISOString(),
           icon: "🥋",
-          text: `${t}s unlocked the Belt Challenge`,
-          sentence: `Your ${t} times table is ready for its Belt Challenge.`,
+          text: `${label} unlocked the Belt Challenge`,
+          sentence: `${label} is ready for its Belt Challenge.`,
           priority: 1,
         })
         lastBelt.set(t, "black")
@@ -187,8 +194,8 @@ function beltCrossingEvents(
           type: "beltReached",
           date: new Date(b.endTime).toISOString(),
           icon: "🥋",
-          text: `${t}s reached ${BELT_LABEL[m.belt]} Belt`,
-          sentence: `Your ${t} times table reached ${BELT_LABEL[m.belt]} Belt today.`,
+          text: `${label} reached ${BELT_LABEL[m.belt]} Belt`,
+          sentence: `${label} reached ${BELT_LABEL[m.belt]} Belt today.`,
           priority: 3,
         })
         lastBelt.set(t, m.belt)
@@ -199,10 +206,20 @@ function beltCrossingEvents(
 }
 
 // ---- Facts newly mastered (single forward pass, O(n)) ----
+// Subject-scoped via `engine`'s own factKey/normalizeFact/formatFact —
+// using the generic (multiplication-only) versions from lib/engine.ts here
+// would silently reverse a non-commutative fact like subtraction's 15-8.
 
-function factMasteredEvents(
+function factMasteredEventsForSubject(
+  engine: SubjectEngine,
   sorted: Attempt[],
   recentSessionIds: Set<string>,
+  // Only passed for division: lets a division fact's mastery event credit
+  // the multiplication knowledge that (per the design) may have primed it
+  // — a soft narrative link only, never a mastery shortcut (division still
+  // has to earn its own mastery independently, same as every other fact
+  // in this replay).
+  multiplicationMasteredFacts?: Set<string>,
 ): WinEvent[] {
   const perFact = new Map<
     string,
@@ -210,7 +227,7 @@ function factMasteredEvents(
   >()
   const events: WinEvent[] = []
   for (const at of sorted) {
-    const key = factKey(at.factorA, at.factorB)
+    const key = engine.factKey(at.factorA, at.factorB)
     const rec = perFact.get(key) ?? {
       correct: 0,
       total: 0,
@@ -227,15 +244,35 @@ function factMasteredEvents(
     if (nowMastered && !rec.mastered) {
       rec.mastered = true
       if (recentSessionIds.has(at.sessionId)) {
-        const [x, y] = normalizeFact(at.factorA, at.factorB)
-        events.push({
-          type: "factMastered",
-          date: at.createdAt.toISOString(),
-          icon: "⭐",
-          text: `Mastered ${x} × ${y}`,
-          sentence: `You mastered ${x} × ${y} today.`,
-          priority: 4,
-        })
+        const [x, y] = engine.normalizeFact(at.factorA, at.factorB)
+        const label = engine.formatFact(x, y)
+        // For division: x=dividend, y=divisor → the multiplication fact
+        // that "explains" it is divisor × quotient (y × (x/y)).
+        const multCounterpartKey =
+          engine.id === "division" ? `${Math.min(y, x / y)}x${Math.max(y, x / y)}` : null
+        const linked =
+          multCounterpartKey != null &&
+          multiplicationMasteredFacts?.has(multCounterpartKey)
+        if (linked) {
+          const quotient = x / y
+          events.push({
+            type: "factMastered",
+            date: at.createdAt.toISOString(),
+            icon: "⭐",
+            text: `Mastered ${label}`,
+            sentence: `Your ${y} × ${quotient} knowledge helped you master ${label}.`,
+            priority: 4,
+          })
+        } else {
+          events.push({
+            type: "factMastered",
+            date: at.createdAt.toISOString(),
+            icon: "⭐",
+            text: `Mastered ${label}`,
+            sentence: `You mastered ${label} today.`,
+            priority: 4,
+          })
+        }
       }
     } else {
       rec.mastered = nowMastered
@@ -296,27 +333,41 @@ function personalBestEvents(pb: PersonalBests): WinEvent[] {
   return events
 }
 
-// ---- Piggy Bank milestones (single forward pass, mirroring computePiggyBank's weekly cap logic) ----
+// ---- Piggy Bank milestones (single forward pass through the FULL,
+// cross-subject attempts log, via the one canonical per-answer allocation
+// rule — lib/piggybank.ts's allocateOneAnswer — so the $4-balanced +
+// $1-flexible model can't drift out of sync with the rest of the app) ----
 
-function piggyMilestoneEvents(
-  sorted: Attempt[],
-  recentSessionIds: Set<string>,
-): WinEvent[] {
-  const correctByWeek = new Map<string, number>()
+// "In window" here means "recent" by simple wall-clock time rather than
+// session membership, since a session boundary computed from one subject's
+// attempts (see computeRecentWins) doesn't meaningfully bound attempts
+// from a completely different subject's sessions.
+const PIGGY_MILESTONE_WINDOW_MS = 14 * 24 * 60 * 60 * 1000
+
+function piggyMilestoneEvents(allAttempts: EarningAttempt[], now: Date): WinEvent[] {
+  const sorted = [...allAttempts].sort(
+    (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
+  )
+  const windowStart = now.getTime() - PIGGY_MILESTONE_WINDOW_MS
+  const weeks = new Map<string, ReturnType<typeof emptyBucket>>()
   let lifetimeEarned = 0
   const weekCapAnnounced = new Set<string>()
   const events: WinEvent[] = []
   for (const at of sorted) {
     if (!at.correct) continue
-    const wk = weekKeyOf(at.createdAt)
-    const before = correctByWeek.get(wk) ?? 0
-    const earnedBefore = Math.min(before, WEEKLY_CAP_CENTS)
-    const earnedAfter = Math.min(before + 1, WEEKLY_CAP_CENTS)
-    correctByWeek.set(wk, before + 1)
-    if (earnedAfter <= earnedBefore) continue
+    const wk = piggyWeekKey(at.createdAt)
+    let bucket = weeks.get(wk)
+    if (!bucket) {
+      bucket = emptyBucket()
+      weeks.set(wk, bucket)
+    }
+    const earnedBefore = bucket.totalCents
+    const earnedThisAnswer = allocateOneAnswer(bucket, at.subject)
+    if (earnedThisAnswer === 0) continue
+    const earnedAfter = bucket.totalCents
 
     lifetimeEarned++
-    const inWindow = recentSessionIds.has(at.sessionId)
+    const inWindow = at.createdAt.getTime() >= windowStart
     if (crossedMultiple(lifetimeEarned - 1, lifetimeEarned, 100) && inWindow) {
       events.push({
         type: "piggyMilestone",
@@ -412,32 +463,40 @@ function sessionHighlightEvents(attempts: Attempt[]): WinEvent[] {
 // ---- Next Challenge: one specific, actionable, data-driven suggestion ----
 
 function componentNudge(m: TableMastery): string {
+  const label = getSubjectEngine(m.subject).skillLabel(m.table)
   const weakest = [...m.components]
     .filter((c) => !c.complete)
     .sort((a, b) => a.numerator / a.denominator - b.numerator / b.denominator)[0]
-  if (!weakest) return `Keep practising your ${m.table} times table.`
+  if (!weakest) return `Keep practising ${label}.`
   switch (weakest.key) {
     case "sessions":
-      return `Play one more practice session on your ${m.table} times table.`
+      return `Play one more practice session on ${label}.`
     case "daysSpread":
-      return `Practise your ${m.table} times table on a different day this week.`
+      return `Practise ${label} on a different day this week.`
     case "fluency":
-      return `Try answering ${m.table}× questions a little faster.`
+      return `Try answering ${label} questions a little faster.`
     case "volume":
-      return `Answer a few more ${m.table}× questions to build up practice.`
+      return `Answer a few more ${label} questions to build up practice.`
     default:
-      return `Keep practising your ${m.table} times table.`
+      return `Keep practising ${label}.`
   }
 }
 
+// Considers every subject's skills together and picks the single best
+// "what to do next" suggestion — never a generic "keep practising" when a
+// specific one is available (challenge-ready beats close-to-next-belt
+// beats a targeted recommendation).
 function pickNextChallenge(mastery: TableMastery[]): string {
   const active = mastery.filter((m) => !m.mastered)
   if (active.length === 0) {
-    return "Every table is mastered — keep your streak sharp!"
+    return "Every skill is mastered — keep your streak sharp!"
   }
   const readyForChallenge = active.find((m) => m.state === "challengeReady")
   if (readyForChallenge) {
-    return `Your ${readyForChallenge.table} times table is ready — take the Belt Challenge!`
+    const label = getSubjectEngine(readyForChallenge.subject).skillLabel(
+      readyForChallenge.table,
+    )
+    return `${label} is ready — take the Belt Challenge!`
   }
   const withNext = active.filter((m) => m.percentToNext !== null)
   const pool = withNext.length > 0 ? withNext : active
@@ -449,7 +508,8 @@ function pickNextChallenge(mastery: TableMastery[]): string {
     closest.nextBelt &&
     closest.percentToNext <= 5
   ) {
-    return `You're only ${closest.percentToNext}% away from your ${BELT_LABEL[closest.nextBelt]} Belt in ${closest.table}s.`
+    const label = getSubjectEngine(closest.subject).skillLabel(closest.table)
+    return `You're only ${closest.percentToNext}% away from your ${BELT_LABEL[closest.nextBelt]} Belt in ${label}.`
   }
   if (/^(Great work|Fully mastered)/.test(closest.recommendation)) {
     return componentNudge(closest)
@@ -459,27 +519,85 @@ function pickNextChallenge(mastery: TableMastery[]): string {
 
 // The core entry point. `now` is injectable for tests; defaults to the
 // real current time.
+//
+// `subjectAttempts`/`subjectAwards` hold each subject's own attempts/belt
+// awards, keyed by subject — belt-crossing and fact-mastered detection run
+// once per subject (a skill index like "7" means something different in
+// each one, and non-commutative subjects need their own factKey), then
+// every subject's events and mastery are merged for the shared child-
+// facing feed. `allAttempts` is the FULL, unfiltered, cross-subject log,
+// needed for Piggy Bank milestones now the weekly cap is shared across
+// every subject; `combinedAttempts` is the concatenation of every
+// subject's attempts, used only for session-highlight detection (safe
+// across subjects since it only reads question/correct counts per
+// session, never fact identity).
 export function computeRecentWins(
-  attempts: Attempt[],
+  subjectAttempts: Partial<Record<Subject, Attempt[]>>,
+  subjectAwards: Partial<Record<Subject, Map<number, Date>>>,
   practiceDays: { date: string; seconds: number }[],
-  awards: Map<number, Date>,
   personalBests: PersonalBests,
+  allAttempts: EarningAttempt[] = [],
   now: Date = new Date(),
 ): RecentWinsData {
-  const sorted = sortedByTime(attempts)
-  const boundaries = sessionBoundaries(sorted)
-  const recentSessionIds = new Set(
-    boundaries.slice(-LOOKBACK_SESSIONS).map((b) => b.sessionId),
-  )
+  const events: WinEvent[] = []
+  const allMastery: TableMastery[] = []
+  const combinedAttempts: Attempt[] = []
 
-  const events: WinEvent[] = [
-    ...beltCrossingEvents(sorted, awards),
-    ...factMasteredEvents(sorted, recentSessionIds),
-    ...personalBestEvents(personalBests),
-    ...piggyMilestoneEvents(sorted, recentSessionIds),
-    ...dailyGoalEvents(practiceDays),
-    ...sessionHighlightEvents(attempts),
-  ]
+  // Multiplication's mastered-fact set, precomputed once, so division's
+  // fact-mastered events can credit it (a soft narrative link only).
+  const multAttempts = subjectAttempts.multiplication
+  let multiplicationMasteredFacts: Set<string> | undefined
+  if (multAttempts && multAttempts.length > 0) {
+    const multEngine = getSubjectEngine("multiplication")
+    const perFact = new Map<string, { correct: number; total: number }>()
+    for (const at of sortedByTime(multAttempts)) {
+      const key = multEngine.factKey(at.factorA, at.factorB)
+      const rec = perFact.get(key) ?? { correct: 0, total: 0 }
+      rec.total++
+      if (at.correct) rec.correct++
+      perFact.set(key, rec)
+    }
+    multiplicationMasteredFacts = new Set(
+      Array.from(perFact.entries())
+        .filter(([, r]) => r.total >= 3 && r.correct / r.total >= 0.9)
+        .map(([k]) => k),
+    )
+  }
+
+  for (const subject of AVAILABLE_SUBJECTS) {
+    const attempts = subjectAttempts[subject] ?? []
+    if (attempts.length === 0) continue
+    const engine = getSubjectEngine(subject)
+    const awards = subjectAwards[subject] ?? new Map<number, Date>()
+    const sorted = sortedByTime(attempts)
+    const boundaries = sessionBoundaries(sorted)
+    const recentSessionIds = new Set(
+      boundaries.slice(-LOOKBACK_SESSIONS).map((b) => b.sessionId),
+    )
+
+    events.push(...beltCrossingEventsForSubject(engine, sorted, awards))
+    events.push(
+      ...factMasteredEventsForSubject(
+        engine,
+        sorted,
+        recentSessionIds,
+        subject === "division" ? multiplicationMasteredFacts : undefined,
+      ),
+    )
+
+    for (const skill of engine.skills) {
+      allMastery.push(
+        computeTableMastery(engine, skill.index, attempts, awards.get(skill.index) ?? null),
+      )
+    }
+
+    combinedAttempts.push(...attempts)
+  }
+
+  events.push(...personalBestEvents(personalBests))
+  events.push(...piggyMilestoneEvents(allAttempts, now))
+  events.push(...dailyGoalEvents(practiceDays))
+  events.push(...sessionHighlightEvents(combinedAttempts))
 
   events.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
   const wins = events.slice(0, RECENT_WINS_LIMIT)
@@ -490,10 +608,7 @@ export function computeRecentWins(
       ? [...todayWins].sort((a, b) => a.priority - b.priority)[0].sentence
       : null
 
-  const mastery = Array.from({ length: 12 }, (_, i) => i + 1).map((t) =>
-    computeTableMastery(t, attempts, awards.get(t) ?? null),
-  )
-  const nextChallenge = pickNextChallenge(mastery)
+  const nextChallenge = pickNextChallenge(allMastery)
 
   return { wins, bestToday, nextChallenge }
 }

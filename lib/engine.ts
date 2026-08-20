@@ -14,6 +14,16 @@ export interface Attempt {
   // attempts recorded before this field existed won't have it — treated as
   // "not fast" (never counts toward fluency) rather than an error.
   answerMs?: number
+  // Which of a subject's 12 skill bands this fact was generated for. Only
+  // meaningful for addition/subtraction (see lib/subjects) — multiplication
+  // and division derive skill membership from factorA/factorB instead and
+  // never read this field.
+  bandIndex?: number | null
+  // The real skill domain this attempt belongs to (see lib/subjects) —
+  // needed by the Piggy Bank's per-subject weekly reward buckets. Optional
+  // because most engine.ts functions (mastery, adaptive selection) operate
+  // on an already-single-subject-filtered array and never need it.
+  subject?: string
 }
 
 export interface Question {

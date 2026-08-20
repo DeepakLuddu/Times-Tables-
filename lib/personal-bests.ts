@@ -10,6 +10,10 @@
 import type { Attempt } from "./engine"
 import { formatMinSec } from "./piggybank"
 import { allSessionSummaries } from "./insights"
+import { SUBJECT_ENGINES, getSubjectEngine } from "./subjects"
+import type { Subject } from "./subjects/types"
+
+const AVAILABLE_SUBJECTS = Object.keys(SUBJECT_ENGINES) as Subject[]
 
 // A "clean run" completes the moment a correct streak reaches this length
 // with zero incorrect answers inside it.
@@ -64,6 +68,9 @@ export interface MostImprovedRecord {
   key: "mostImproved"
   achieved: boolean
   table: number | null
+  subject: Subject | null
+  /** Precomputed display label, e.g. "7 Times Table" / "Divide by 8" / "Facts within 20". */
+  skillLabel: string | null
   earlyAccuracy: number | null // 0..100
   recentAccuracy: number | null // 0..100
   improvement: number | null // percentage points, recent - early
@@ -204,6 +211,8 @@ function scanBestAccuracy(attempts: Attempt[]): {
 interface MostImprovedSnapshot {
   achieved: boolean
   table: number | null
+  subject: Subject | null
+  skillLabel: string | null
   earlyAccuracy: number | null
   recentAccuracy: number | null
   improvement: number | null
@@ -216,31 +225,55 @@ function accuracyOf(list: Attempt[]): number {
   return Math.round((correct / list.length) * 100)
 }
 
+// Scans every subject's skills (not just multiplication's 12 tables) to
+// find the single most-improved skill globally. Attempts are grouped by
+// their own `subject` first — mixing subjects before filtering by "table"
+// would be wrong, since e.g. multiplication's "7×8" and division's "56÷7"
+// both touch the number 7 but belong to entirely different skill spaces.
 function computeMostImprovedSnapshot(sorted: Attempt[]): MostImprovedSnapshot {
   let best: {
     table: number
+    subject: Subject
     early: number
     recent: number
     improvement: number
     date: string
   } | null = null
 
-  for (let t = 1; t <= 12; t++) {
-    const list = sorted.filter((a) => a.factorA === t || a.factorB === t)
-    if (list.length < MIN_TABLE_ATTEMPTS_FOR_IMPROVEMENT) continue
-    const early = list.slice(0, IMPROVEMENT_WINDOW)
-    const recent = list.slice(-IMPROVEMENT_WINDOW)
-    const earlyAcc = accuracyOf(early)
-    const recentAcc = accuracyOf(recent)
-    const improvement = recentAcc - earlyAcc
-    if (improvement <= 0) continue
-    if (!best || improvement > best.improvement) {
-      best = {
-        table: t,
-        early: earlyAcc,
-        recent: recentAcc,
-        improvement,
-        date: recent[recent.length - 1].createdAt.toISOString(),
+  const bySubject = new Map<Subject, Attempt[]>()
+  for (const a of sorted) {
+    const subject = (a.subject as Subject) ?? "multiplication"
+    if (!bySubject.has(subject)) bySubject.set(subject, [])
+    bySubject.get(subject)!.push(a)
+  }
+
+  for (const subject of AVAILABLE_SUBJECTS) {
+    const subjAttempts = bySubject.get(subject)
+    if (!subjAttempts || subjAttempts.length === 0) continue
+    const engine = getSubjectEngine(subject)
+    for (const skill of engine.skills) {
+      const t = skill.index
+      const list = subjAttempts.filter((a) =>
+        engine
+          .skillsForAttempt({ factorA: a.factorA, factorB: a.factorB, bandIndex: a.bandIndex ?? null })
+          .includes(t),
+      )
+      if (list.length < MIN_TABLE_ATTEMPTS_FOR_IMPROVEMENT) continue
+      const early = list.slice(0, IMPROVEMENT_WINDOW)
+      const recent = list.slice(-IMPROVEMENT_WINDOW)
+      const earlyAcc = accuracyOf(early)
+      const recentAcc = accuracyOf(recent)
+      const improvement = recentAcc - earlyAcc
+      if (improvement <= 0) continue
+      if (!best || improvement > best.improvement) {
+        best = {
+          table: t,
+          subject,
+          early: earlyAcc,
+          recent: recentAcc,
+          improvement,
+          date: recent[recent.length - 1].createdAt.toISOString(),
+        }
       }
     }
   }
@@ -249,6 +282,8 @@ function computeMostImprovedSnapshot(sorted: Attempt[]): MostImprovedSnapshot {
     return {
       achieved: false,
       table: null,
+      subject: null,
+      skillLabel: null,
       earlyAccuracy: null,
       recentAccuracy: null,
       improvement: null,
@@ -258,6 +293,8 @@ function computeMostImprovedSnapshot(sorted: Attempt[]): MostImprovedSnapshot {
   return {
     achieved: true,
     table: best.table,
+    subject: best.subject,
+    skillLabel: getSubjectEngine(best.subject).skillLabel(best.table),
     earlyAccuracy: best.early,
     recentAccuracy: best.recent,
     improvement: best.improvement,
@@ -291,7 +328,7 @@ function computeMostImprovedHistory(sorted: Attempt[]): RecordHistoryEntry[] {
       bestImprovement = snap.improvement
       history.push({
         date: snap.date ?? new Date(boundary).toISOString(),
-        label: `${snap.table} Times Table +${snap.improvement}%`,
+        label: `${snap.skillLabel} +${snap.improvement}%`,
       })
     }
   }
@@ -334,6 +371,8 @@ export function computePersonalBests(attempts: Attempt[]): PersonalBests {
       key: "mostImproved",
       achieved: improved.achieved,
       table: improved.table,
+      subject: improved.subject,
+      skillLabel: improved.skillLabel,
       earlyAccuracy: improved.earlyAccuracy,
       recentAccuracy: improved.recentAccuracy,
       improvement: improved.improvement,
@@ -422,7 +461,7 @@ export function detectNewPersonalBest(
         return {
           key,
           title: "Most Improved",
-          value: `${a.table} Times Table`,
+          value: a.skillLabel ?? "—",
           sublabel: `${a.earlyAccuracy}% → ${a.recentAccuracy}% (+${a.improvement}%)`,
         }
       }

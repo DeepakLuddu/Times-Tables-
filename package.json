@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint .",
     "db:setup:piggy-bank": "node --env-file=.env.local scripts/setup-piggy-bank-db.mjs",
-    "db:setup:belt-mastery": "node --env-file=.env.local scripts/setup-belt-mastery-db.mjs"
+    "db:setup:belt-mastery": "node --env-file=.env.local scripts/setup-belt-mastery-db.mjs",
+    "db:setup:multi-subject": "node --env-file=.env.local scripts/setup-multi-subject-db.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",

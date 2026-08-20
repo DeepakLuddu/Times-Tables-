@@ -14,6 +14,7 @@ import {
   factKey,
   normalizeFact,
 } from "./engine"
+import type { Subject } from "./subjects/types"
 
 export type InsightType =
   | "levelUp"
@@ -35,6 +36,7 @@ export interface TroubleFact {
 export interface BeltPromotion {
   table: number
   belt: Belt
+  subject: Subject
 }
 
 export interface SessionSummary {
@@ -124,7 +126,7 @@ export function sessionInsights(
         type: "levelUp",
         text: `Your ${tableName(t)} reached ${beltName(a.belt)} belt!`,
       })
-      promotions.push({ table: t, belt: a.belt })
+      promotions.push({ table: t, belt: a.belt, subject: "multiplication" })
     }
   }
 

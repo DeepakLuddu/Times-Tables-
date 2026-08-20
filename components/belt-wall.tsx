@@ -8,18 +8,24 @@ import { AnimatedPercentLabel, MasteryBar } from "@/components/mastery-bar"
 import { RecentWinsSection } from "@/components/recent-wins-section"
 import type { TableMastery } from "@/lib/mastery"
 import { getPlayerId } from "@/lib/player"
+import { getSubjectEngine, SUBJECT_ENGINES } from "@/lib/subjects"
+import type { Subject } from "@/lib/subjects/types"
 import { cn } from "@/lib/utils"
 import { House, Sparkles } from "lucide-react"
 import Link from "next/link"
 import { useEffect, useState } from "react"
 
-function factChip(a: number, b: number, key?: string) {
+// Only subjects with a registered SubjectEngine show a tab — addition and
+// subtraction land in a later phase.
+const AVAILABLE_SUBJECTS = Object.keys(SUBJECT_ENGINES) as Subject[]
+
+function factChip(subject: Subject, a: number, b: number, key?: string) {
   return (
     <span
       key={key ?? `${a}x${b}`}
       className="rounded-lg bg-muted px-3 py-1.5 font-mono text-sm font-semibold text-foreground"
     >
-      {a} × {b}
+      {getSubjectEngine(subject).formatFact(a, b)}
     </span>
   )
 }
@@ -98,6 +104,7 @@ function BeltCard({
 }
 
 export function BeltWall() {
+  const [subject, setSubject] = useState<Subject>("multiplication")
   const [data, setData] = useState<BeltWallData | null>(null)
   const [selected, setSelected] = useState<TableMastery | null>(null)
   const [playerId, setPlayerId] = useState("")
@@ -105,13 +112,21 @@ export function BeltWall() {
   useEffect(() => {
     const pid = getPlayerId()
     setPlayerId(pid)
-    void getBeltWallData(pid).then(setData)
   }, [])
+
+  useEffect(() => {
+    if (!playerId) return
+    setData(null)
+    void getBeltWallData(playerId, subject).then(setData)
+  }, [playerId, subject])
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-2xl flex-col px-5 py-6">
       {selected && (
-        <BeltDetail mastery={selected} onClose={() => setSelected(null)} />
+        <BeltDetail
+          mastery={selected}
+          onClose={() => setSelected(null)}
+        />
       )}
       <div className="flex items-center gap-3">
         <Link
@@ -124,6 +139,25 @@ export function BeltWall() {
         <h1 className="font-display text-3xl font-bold text-primary">
           Belt Wall
         </h1>
+      </div>
+
+      {/* Subject tabs */}
+      <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
+        {AVAILABLE_SUBJECTS.map((s) => (
+          <button
+            key={s}
+            type="button"
+            onClick={() => setSubject(s)}
+            className={cn(
+              "shrink-0 rounded-full px-4 py-2 font-display text-sm font-semibold transition-colors",
+              subject === s
+                ? "bg-primary text-primary-foreground"
+                : "bg-muted text-foreground/60 hover:text-foreground",
+            )}
+          >
+            {getSubjectEngine(s).label}
+          </button>
+        ))}
       </div>
 
       {!data ? (
@@ -152,7 +186,7 @@ export function BeltWall() {
               </p>
             ) : (
               <div className="mt-3 flex flex-wrap gap-2">
-                {data.needsPractice.map((f) => factChip(f.a, f.b))}
+                {data.needsPractice.map((f) => factChip(subject, f.a, f.b))}
               </div>
             )}
           </section>
@@ -173,7 +207,7 @@ export function BeltWall() {
             ) : (
               <div className="mt-3 flex flex-wrap gap-2">
                 {data.nextSessionFacts.map((f) =>
-                  factChip(f.a, f.b, `next-${f.a}x${f.b}`),
+                  factChip(subject, f.a, f.b, `next-${f.a}x${f.b}`),
                 )}
               </div>
             )}

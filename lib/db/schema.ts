@@ -25,6 +25,24 @@ export const attempts = pgTable("attempts", {
   // Milliseconds from question shown to answer submitted. Nullable because
   // rows recorded before this column existed won't have it.
   answerMs: integer("answerMs"),
+  // The real skill domain this question belongs to — drives mastery scoping
+  // and Piggy Bank reward-bucket allocation. Never 'mixed'. Defaults to
+  // 'multiplication' so every historical row keeps its original meaning.
+  subject: text("subject").notNull().default("multiplication"),
+  // What the child selected for this sitting — the 4 subjects or 'mixed'.
+  // Used only for session/streak/run labelling (e.g. Personal Bests showing
+  // "Mixed Maths"), never for mastery — see lib/subjects.
+  practiceSubject: text("practiceSubject").notNull().default("multiplication"),
+  // Which of a subject's 12 skill bands this fact was generated for. Only
+  // set for addition/subtraction, where band membership isn't reliably
+  // derivable from factorA/factorB after the fact (unlike multiplication's
+  // dual-table membership or division's single-divisor membership).
+  bandIndex: integer("bandIndex"),
+  // 'solve' (normal "a OP b = ?") or 'missingOperand' ("a + ? = c") — only
+  // the addition/subtraction "missing-number" bands use the latter.
+  questionKind: text("questionKind").notNull().default("solve"),
+  // Which slot was blanked for a 'missingOperand' question: 'a' | 'b' | 'result'.
+  blankSlot: text("blankSlot"),
 })
 
 export type AttemptRow = typeof attempts.$inferSelect
@@ -58,8 +76,15 @@ export const practiceTime = pgTable(
     updatedAt: timestamp("updatedAt", { withTimezone: true })
       .notNull()
       .defaultNow(),
+    // The practiceSubject bucket this time was logged under (the 4 subjects
+    // or 'mixed'). The 15-minute daily goal sums across every bucket for a
+    // date, so this splits the existing single-row-per-day total without
+    // changing that goal's meaning.
+    subject: text("subject").notNull().default("multiplication"),
   },
-  (table) => [primaryKey({ columns: [table.playerId, table.date] })],
+  (table) => [
+    primaryKey({ columns: [table.playerId, table.date, table.subject] }),
+  ],
 )
 
 export type PracticeTimeRow = typeof practiceTime.$inferSelect
@@ -84,12 +109,17 @@ export const beltAwards = pgTable(
   "beltAwards",
   {
     playerId: text("playerId").notNull(),
+    // Generic "skill index 1-12 within subject" — times-table N, divide-by
+    // N, or addition/subtraction band N, depending on `subject`.
     tableNumber: integer("tableNumber").notNull(),
     awardedAt: timestamp("awardedAt", { withTimezone: true })
       .notNull()
       .defaultNow(),
+    subject: text("subject").notNull().default("multiplication"),
   },
-  (table) => [primaryKey({ columns: [table.playerId, table.tableNumber] })],
+  (table) => [
+    primaryKey({ columns: [table.playerId, table.subject, table.tableNumber] }),
+  ],
 )
 
 export type BeltAwardRow = typeof beltAwards.$inferSelect

@@ -10,9 +10,15 @@
 // construction rather than by remembering to enforce them somewhere.
 
 import type { Attempt } from "./engine"
+import { SUBJECTS, type Subject } from "./subjects/types"
 
 export const CENT_PER_CORRECT = 1
 export const WEEKLY_CAP_CENTS = 500
+// $4 "balanced pool": up to $1 (100c) per subject...
+export const SUBJECT_WEEKLY_CAP_CENTS = 100
+// ...plus a shared $1 (100c) "flexible pool" any subject can fill once its
+// own $1 is used. 4 x 100 + 100 = 500 = WEEKLY_CAP_CENTS, always.
+export const FLEXIBLE_WEEKLY_CAP_CENTS = 100
 export const DAILY_GOAL_SECONDS = 15 * 60
 
 export interface WithdrawalEntry {
@@ -21,6 +27,15 @@ export interface WithdrawalEntry {
   balanceBeforeCents: number
   balanceAfterCents: number
   createdAt: Date
+}
+
+// This week's earning breakdown — the data behind the compact "Multiplication
+// ✓ / Division progressing" indicator (never shown to the child as a full
+// finance dashboard, just a simple checkmark/progress state per subject).
+export interface WeeklyEarningsBucket {
+  bySubjectCents: Record<Subject, number>
+  flexibleCents: number
+  totalCents: number
 }
 
 export interface PiggyBankSummary {
@@ -34,6 +49,24 @@ export interface PiggyBankSummary {
   currentStreak: number
   bestStreak: number
   withdrawals: WithdrawalEntry[]
+  /** This week's per-subject + flexible-pool earnings (see WeeklyEarningsBucket). */
+  weeklyBreakdown: WeeklyEarningsBucket
+}
+
+// The minimal shape allocateWeeklyEarnings/computePiggyBank need from an
+// attempt — deliberately its own type (not lib/engine.ts's Attempt) since
+// the Piggy Bank never touches factorA/factorB, only which subject a
+// correct answer belongs to.
+export interface EarningAttempt {
+  subject: Subject
+  correct: boolean
+  createdAt: Date
+}
+
+function emptyBucket(): WeeklyEarningsBucket {
+  const bySubjectCents = {} as Record<Subject, number>
+  for (const s of SUBJECTS) bySubjectCents[s] = 0
+  return { bySubjectCents, flexibleCents: 0, totalCents: 0 }
 }
 
 // The Monday 00:00 UTC that starts the week containing `d`.
@@ -47,19 +80,65 @@ export function weekStartOf(d: Date): Date {
   return monday
 }
 
-function weekKey(d: Date): string {
+export function weekKey(d: Date): string {
   return weekStartOf(d).toISOString().slice(0, 10)
 }
 
-// Cents earned from N correct answers in a single week, capped.
-function weekEarnedCents(correctInWeek: number): number {
-  return Math.min(correctInWeek * CENT_PER_CORRECT, WEEKLY_CAP_CENTS)
+// The one canonical per-answer allocation rule — every other place that
+// used to duplicate this weekly-cap math (lib/recent-wins.ts's
+// piggyMilestoneEvents, lib/session-log.ts's per-session replay,
+// components/game-board.tsx's optimistic client-side mirror) now goes
+// through this (directly, or via allocateWeeklyEarnings below), so the
+// $4-balanced + $1-flexible model can't drift out of sync across call sites.
+//
+// If that subject's own balanced-pool bucket is still under $1, the cent
+// goes there; otherwise, if the shared flexible pool is still under $1, it
+// goes there; otherwise this answer earns nothing further this week
+// (everything else — mastery, streaks, belts — keeps progressing
+// regardless). Mutates `bucket` in place; returns cents earned (0 or 1).
+export function allocateOneAnswer(bucket: WeeklyEarningsBucket, subject: Subject): number {
+  const subjectCents = bucket.bySubjectCents[subject] ?? 0
+  if (subjectCents < SUBJECT_WEEKLY_CAP_CENTS) {
+    bucket.bySubjectCents[subject] = subjectCents + CENT_PER_CORRECT
+    bucket.totalCents += CENT_PER_CORRECT
+    return CENT_PER_CORRECT
+  }
+  if (bucket.flexibleCents < FLEXIBLE_WEEKLY_CAP_CENTS) {
+    bucket.flexibleCents += CENT_PER_CORRECT
+    bucket.totalCents += CENT_PER_CORRECT
+    return CENT_PER_CORRECT
+  }
+  return 0
 }
+
+// Batch version: replays a whole (chronologically sorted) attempts list
+// into per-week buckets using allocateOneAnswer.
+export function allocateWeeklyEarnings(
+  attempts: Pick<EarningAttempt, "subject" | "correct" | "createdAt">[],
+): Map<string, WeeklyEarningsBucket> {
+  const sorted = [...attempts].sort(
+    (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
+  )
+  const weeks = new Map<string, WeeklyEarningsBucket>()
+  for (const at of sorted) {
+    if (!at.correct) continue
+    const wk = weekKey(at.createdAt)
+    let bucket = weeks.get(wk)
+    if (!bucket) {
+      bucket = emptyBucket()
+      weeks.set(wk, bucket)
+    }
+    allocateOneAnswer(bucket, at.subject)
+  }
+  return weeks
+}
+
+export { emptyBucket }
 
 // Recompute the full Piggy Bank state from scratch. `now` is injectable for
 // tests; defaults to the real current time.
 export function computePiggyBank(
-  attempts: Pick<Attempt, "correct" | "createdAt">[],
+  attempts: EarningAttempt[],
   withdrawals: WithdrawalEntry[],
   now: Date = new Date(),
 ): PiggyBankSummary {
@@ -67,11 +146,10 @@ export function computePiggyBank(
     (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
   )
 
-  const correctByWeek = new Map<string, number>()
   let totalCorrect = 0
   let currentStreak = 0
   let bestStreak = 0
-
+  const correctByWeek = new Map<string, number>()
   for (const at of sorted) {
     if (at.correct) {
       totalCorrect++
@@ -84,14 +162,14 @@ export function computePiggyBank(
     }
   }
 
+  const allocation = allocateWeeklyEarnings(attempts)
   let lifetimeEarnedCents = 0
-  for (const count of correctByWeek.values()) {
-    lifetimeEarnedCents += weekEarnedCents(count)
-  }
+  for (const bucket of allocation.values()) lifetimeEarnedCents += bucket.totalCents
 
   const thisWeekKey = weekKey(now)
   const correctThisWeek = correctByWeek.get(thisWeekKey) ?? 0
-  const earnedThisWeekCents = weekEarnedCents(correctThisWeek)
+  const weeklyBreakdown = allocation.get(thisWeekKey) ?? emptyBucket()
+  const earnedThisWeekCents = weeklyBreakdown.totalCents
 
   const withdrawnCents = withdrawals.reduce((s, w) => s + w.amountCents, 0)
   // Guardrail: balance can never go below zero, even defensively.
@@ -107,6 +185,7 @@ export function computePiggyBank(
     currentStreak,
     bestStreak,
     withdrawals,
+    weeklyBreakdown,
   }
 }
 

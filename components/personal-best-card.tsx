@@ -59,10 +59,10 @@ function contentFor(record: AnyRecord): CardContent {
       return {
         icon: TrendingUp,
         title: "Most Improved",
-        value: record.achieved ? `${record.table} Times Table` : "—",
+        value: record.achieved ? (record.skillLabel ?? "—") : "—",
         sublabel: record.achieved
           ? `${record.earlyAccuracy}% → ${record.recentAccuracy}% (+${record.improvement}%)`
-          : "Your most-improved table",
+          : "Your most-improved skill",
         lockedMessage: "Keep practising to unlock this record",
       }
   }
