@@ -21,8 +21,8 @@ const jetbrains = JetBrains_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'Times Dojo',
-  description: 'Earn your black belt in the times tables, one fact at a time.',
+  title: 'Maths Dojo',
+  description: 'Train your maths. Earn your black belts.',
   generator: 'v0.app',
 }
 

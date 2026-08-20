@@ -76,6 +76,11 @@ export function ParentReport() {
             Once your child answers a few questions, this page will fill with
             their progress, strengths, and trouble spots.
           </p>
+          <p className="mt-4 font-sans text-sm text-card-foreground/50">
+            Maths Dojo is a mastery-based maths practice app covering
+            addition, subtraction, multiplication and division, with
+            adaptive practice and progress tracking.
+          </p>
         </div>
       ) : (
         <>

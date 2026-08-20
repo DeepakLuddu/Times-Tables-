@@ -1,4 +1,4 @@
-// Times Dojo adaptive engine — pure functions over an attempts log.
+// Maths Dojo adaptive engine — pure functions over an attempts log.
 // No database access here; everything is computed from arrays of attempts.
 
 export type Mode = "practice" | "sprint"

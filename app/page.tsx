@@ -8,17 +8,21 @@ export default function HomePage() {
       <div className="flex flex-col items-center text-center">
         <Image
           src="/dojo-mascot.png"
-          alt="Times Dojo mascot, a red panda in a karate gi"
+          alt="Maths Dojo mascot, a red panda in a karate gi"
           width={180}
           height={180}
           priority
           className="size-44 rounded-full border-4 border-primary/40 object-cover shadow-xl"
         />
         <h1 className="mt-2 font-display text-5xl font-bold text-primary">
-          Times Dojo
+          Maths Dojo
         </h1>
-        <p className="mt-2 text-balance font-sans text-base text-foreground/70">
-          Earn your black belt in the times tables, one fact at a time.
+        <p className="mt-2 text-balance font-display text-lg font-semibold text-foreground">
+          Train your maths. Earn your black belts.
+        </p>
+        <p className="mt-1 text-balance font-sans text-base text-foreground/70">
+          Master addition, subtraction, multiplication and division through
+          personalised practice, challenges and rewards.
         </p>
       </div>
 

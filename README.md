@@ -10,7 +10,7 @@ This repository is linked to a [v0](https://v0.app) project. You can continue de
 
 ## Architecture
 
-![Times Dojo architecture: client, presentation, application, data, and infrastructure layers](docs/architecture.png)
+![Maths Dojo architecture: client, presentation, application, data, and infrastructure layers](docs/architecture.png)
 
 Client devices talk to a Next.js frontend, which calls server-side logic directly through Next.js Server Actions (no separate REST API). That logic reads and writes a Neon Postgres database through Drizzle ORM, and the whole app is hosted on Vercel with automatic deploys on every push to `main`.
 

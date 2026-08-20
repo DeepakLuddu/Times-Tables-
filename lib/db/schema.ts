@@ -8,7 +8,7 @@ import {
   primaryKey,
 } from "drizzle-orm/pg-core"
 
-// Times Dojo stores exactly one thing: a log of every answered question.
+// Maths Dojo stores exactly one thing: a log of every answered question.
 // Everything else (fact stats, belts, insights) is computed on read.
 export const attempts = pgTable("attempts", {
   id: serial("id").primaryKey(),
