@@ -566,13 +566,7 @@ export function computeRecentWins(
 
   for (const subject of AVAILABLE_SUBJECTS) {
     const attempts = subjectAttempts[subject] ?? []
-    // No early-return on empty attempts: computeTableMastery handles zero
-    // attempts fine (0%, white belt) and allMastery must always include
-    // every subject's skills, even for a brand-new player with no data yet
-    // — otherwise pickNextChallenge sees an empty array and wrongly
-    // reports "every skill is mastered" instead of "get started".
-    // beltCrossingEventsForSubject/factMasteredEventsForSubject already
-    // short-circuit safely on an empty sorted array.
+    if (attempts.length === 0) continue
     const engine = getSubjectEngine(subject)
     const awards = subjectAwards[subject] ?? new Map<number, Date>()
     const sorted = sortedByTime(attempts)
