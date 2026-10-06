@@ -1,7 +1,9 @@
 "use client"
 
 import { getParentReport } from "@/app/actions/dojo"
-import { Belt } from "@/components/belt"
+import { RankMark } from "@/components/rank-mark"
+import { useTheme } from "@/components/theme-provider"
+import { BELT_LABEL } from "@/lib/engine"
 import { PiggyBankParent } from "@/components/piggy-bank-parent"
 import { SessionHistory } from "@/components/session-history"
 import type { ParentReport as Report } from "@/lib/insights"
@@ -10,15 +12,6 @@ import { cn } from "@/lib/utils"
 import { House, Lightbulb } from "lucide-react"
 import Link from "next/link"
 import { useEffect, useState } from "react"
-
-const BELT_LABEL: Record<string, string> = {
-  white: "White",
-  yellow: "Yellow",
-  green: "Green",
-  blue: "Blue",
-  brown: "Brown",
-  black: "Black",
-}
 
 function formatDay(iso: string): string {
   const d = new Date(`${iso}T00:00:00`)
@@ -34,6 +27,7 @@ function formatDate(iso: string | null): string {
 }
 
 export function ParentReport() {
+  const { theme } = useTheme()
   const [report, setReport] = useState<Report | null>(null)
   const [playerId, setPlayerId] = useState("")
 
@@ -164,9 +158,9 @@ export function ParentReport() {
                   <span className="w-6 font-mono text-lg font-semibold">
                     {t.table}
                   </span>
-                  <Belt tier={t.belt} className="h-4 w-16 shrink-0" />
+                  <RankMark tier={t.belt} className="h-4 w-16 shrink-0" size="sm" />
                   <span className="w-20 font-sans text-sm text-card-foreground/70">
-                    {BELT_LABEL[t.belt]}
+                    {theme.id === "ninja" ? BELT_LABEL[t.belt] : theme.ranks[t.belt]}
                   </span>
                   <span className="ml-auto font-mono text-sm text-card-foreground/60">
                     {t.attempts === 0 ? "—" : `${t.accuracy}%`}
