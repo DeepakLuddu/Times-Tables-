@@ -12,7 +12,7 @@ import { useEffect, useState } from "react"
 // and the next stop pulsing as the target. Each table has its own belt, so
 // the marker sits at the AVERAGE mastery across all 12 tables — and every
 // stop shows how many tables are currently at that rank, so the spread is
-// visible as well as the overall position.
+// visible as well as the average position.
 
 const LINE_H = 6
 const STOP_SIZE = 28 // matches RankMark size="sm" (size-7)
@@ -66,9 +66,16 @@ export function BeltJourney({
   const stops = BELT_THRESHOLDS
   const lastIdx = stops.length - 1
 
-  const overall = tables.length
+  const average = tables.length
     ? Math.round(tables.reduce((s, m) => s + m.percent, 0) / tables.length)
     : 0
+  // The final stop means EVERY table is mastered — a strong average can't
+  // reach it while even one table is still unfinished (11 perfect tables and
+  // one at 82% still average 99%). Until then the marker stops just short.
+  const toMaster = tables.filter((m) => m.state !== "mastered").length
+  const allMastered = tables.length > 0 && toMaster === 0
+  const overall = allMastered ? 100 : Math.min(average, 98)
+  const heldBack = !allMastered && average >= 99
   const pos = pathPosition(overall)
   const nextIdx = stops.findIndex((t) => t.min > overall)
   const next = nextIdx === -1 ? null : stops[nextIdx]
@@ -104,7 +111,7 @@ export function BeltJourney({
           {theme.journeyTitle}
         </p>
         <p className="font-mono text-xs font-semibold text-card-foreground/60">
-          {overall}% overall
+          {average}% average
         </p>
       </div>
 
@@ -115,7 +122,7 @@ export function BeltJourney({
             className="absolute bottom-0 flex -translate-x-1/2 flex-col items-center transition-[left] duration-1000 ease-out"
             style={{ left: `${inset + span * frac}%` }}
             role="img"
-            aria-label={`You are here, ${overall}% of the way`}
+            aria-label={`You are here, ${average}% average across your tables`}
           >
             <span className="text-lg leading-none drop-shadow-sm" aria-hidden="true">
               {theme.emoji}
@@ -248,7 +255,9 @@ export function BeltJourney({
 
       <p className="mt-2 text-center font-sans text-xs text-card-foreground/70">
         {next
-          ? `Next stop: ${fullName(next.belt)} — ${next.min - overall}% to go`
+          ? heldBack
+          ? `Next stop: ${fullName(next.belt)} — ${toMaster} ${toMaster === 1 ? "table" : "tables"} still to master`
+          : `Next stop: ${fullName(next.belt)} — ${next.min - overall}% to go`
           : `You reached the top: ${fullName(stops[lastIdx].belt)}!`}
       </p>
     </section>
