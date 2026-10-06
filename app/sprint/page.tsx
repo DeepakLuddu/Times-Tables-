@@ -1,5 +1,5 @@
-import { SubjectPicker } from "@/components/subject-picker"
+import { GameBoard } from "@/components/game-board"
 
 export default function SprintPage() {
-  return <SubjectPicker mode="sprint" />
+  return <GameBoard mode="sprint" />
 }

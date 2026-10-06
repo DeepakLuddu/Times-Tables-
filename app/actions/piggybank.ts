@@ -7,30 +7,31 @@ import {
   practiceTime as practiceTimeTable,
   withdrawals as withdrawalsTable,
 } from "@/lib/db/schema"
+import type { Attempt } from "@/lib/engine"
 import {
-  type EarningAttempt,
   type PiggyBankSummary,
   type WithdrawalEntry,
   computePiggyBank,
   weekStartOf,
 } from "@/lib/piggybank"
-import type { Subject } from "@/lib/subjects/types"
 import { and, eq, sql } from "drizzle-orm"
 import { createHash, randomBytes } from "node:crypto"
 
 // A single small helper duplicated here (rather than imported from dojo.ts)
 // to keep the two action modules independent — both just read the same
-// attempts table. Unfiltered by subject: the Piggy Bank is unified across
-// every subject by design.
-async function loadAttempts(playerId: string): Promise<EarningAttempt[]> {
+// attempts table.
+async function loadAttempts(playerId: string): Promise<Attempt[]> {
   if (!playerId) return []
   const rows = await db
     .select()
     .from(attemptsTable)
     .where(eq(attemptsTable.playerId, playerId))
   return rows.map((r) => ({
-    subject: r.subject as Subject,
+    factorA: r.factorA,
+    factorB: r.factorB,
     correct: r.correct,
+    mode: r.mode as Attempt["mode"],
+    sessionId: r.sessionId,
     createdAt: r.createdAt,
   }))
 }

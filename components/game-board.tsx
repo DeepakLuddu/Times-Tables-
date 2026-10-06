@@ -1,6 +1,6 @@
 "use client"
 
-import { getMixedMathsEligibility, getQuestions, recordAttempt } from "@/app/actions/dojo"
+import { getQuestions, recordAttempt } from "@/app/actions/dojo"
 import { addPracticeTime, getPiggyBankState, getPracticeTimeToday } from "@/app/actions/piggybank"
 import {
   AnswerCelebration,
@@ -15,37 +15,23 @@ import {
   PiggyCelebration,
   type PiggyCelebrationData,
 } from "@/components/piggy-celebration"
-import type { Mode } from "@/lib/engine"
+import type { Mode, Question } from "@/lib/engine"
 import type { BeltPromotion as BeltPromotionData } from "@/lib/insights"
 import type { PersonalBestDelta } from "@/lib/personal-bests"
 import { getPlayerId, newSessionId } from "@/lib/player"
 import {
   type PiggyBankSummary,
-  type WeeklyEarningsBucket,
   WEEKLY_CAP_CENTS,
-  allocateOneAnswer,
   localDateKey,
 } from "@/lib/piggybank"
-import { getSubjectEngine } from "@/lib/subjects"
-import type { PracticeSubject, Subject, SubjectQuestion } from "@/lib/subjects/types"
 import { cn } from "@/lib/utils"
 import { Flame, House } from "lucide-react"
 import Link from "next/link"
 import { useCallback, useEffect, useRef, useState } from "react"
 
-const OPERATOR_SYMBOL: Record<Subject, string> = {
-  multiplication: "×",
-  division: "÷",
-  addition: "+",
-  subtraction: "−",
-}
-
 const BATCH = 12
 const SPRINT_SECONDS = 60
 const FLASH_MS = 650
-// How long a wrong answer stays on screen (correct answer highlighted)
-// before auto-advancing, for subjects without a FactVisuals-style review.
-const WRONG_ANSWER_PAUSE_MS = 1800
 // Correct answers that land on a streak milestone get a slightly longer
 // beat so the "5 STREAK!" banner has time to read before the next question.
 const MILESTONE_FLASH_MS = 900
@@ -54,12 +40,6 @@ const MILESTONE_FLASH_MS = 900
 const IDLE_MS = 30_000
 // How often accumulated active seconds get persisted to the server.
 const PRACTICE_FLUSH_MS = 8_000
-
-const EMPTY_WEEKLY_BREAKDOWN: WeeklyEarningsBucket = {
-  bySubjectCents: { multiplication: 0, division: 0, addition: 0, subtraction: 0 },
-  flexibleCents: 0,
-  totalCents: 0,
-}
 
 const EMPTY_PIGGY: PiggyBankSummary = {
   balanceCents: 0,
@@ -71,21 +51,14 @@ const EMPTY_PIGGY: PiggyBankSummary = {
   currentStreak: 0,
   bestStreak: 0,
   withdrawals: [],
-  weeklyBreakdown: EMPTY_WEEKLY_BREAKDOWN,
 }
 
 type Status = "idle" | "correct" | "wrong"
 
-export function GameBoard({
-  mode,
-  practiceSubject = "multiplication",
-}: {
-  mode: Mode
-  practiceSubject?: PracticeSubject
-}) {
+export function GameBoard({ mode }: { mode: Mode }) {
   const [playerId, setPlayerId] = useState("")
   const sessionIdRef = useRef("")
-  const [questions, setQuestions] = useState<SubjectQuestion[]>([])
+  const [questions, setQuestions] = useState<Question[]>([])
   const [idx, setIdx] = useState(0)
   const [status, setStatus] = useState<Status>("idle")
   const [chosen, setChosen] = useState<number | null>(null)
@@ -136,14 +109,6 @@ export function GameBoard({
   const fetchingRef = useRef(false)
   const startedRef = useRef(false)
 
-  // Mixed Maths eligibility gate — null while unknown/loading, otherwise
-  // whether the child has enough cross-subject experience yet (see
-  // getMixedMathsEligibility in app/actions/dojo.ts). Every other subject
-  // is always eligible.
-  const [mixedEligible, setMixedEligible] = useState<boolean | null>(
-    practiceSubject === "mixed" ? null : true,
-  )
-
   const startSitting = useCallback(async (pid: string) => {
     sessionIdRef.current = newSessionId()
     setQuestions([])
@@ -160,29 +125,22 @@ export function GameBoard({
     setCelebration(null)
     setPiggyCelebration(null)
     setPersonalBestCelebration(null)
-    const first = await getQuestions(pid, BATCH, true, practiceSubject)
+    const first = await getQuestions(pid, BATCH, true)
     setQuestions(first)
-  }, [practiceSubject])
+  }, [])
 
   useEffect(() => {
     const pid = getPlayerId()
     setPlayerId(pid)
     if (!startedRef.current) {
       startedRef.current = true
-      if (practiceSubject === "mixed") {
-        void getMixedMathsEligibility(pid).then((eligible) => {
-          setMixedEligible(eligible)
-          if (eligible) void startSitting(pid)
-        })
-      } else {
-        void startSitting(pid)
-      }
+      void startSitting(pid)
       void getPiggyBankState(pid).then(setPiggy)
       void getPracticeTimeToday(pid, localDateKey()).then((seconds) =>
         setTodaySeconds(seconds),
       )
     }
-  }, [startSitting, practiceSubject])
+  }, [startSitting])
 
   // Track "active" time: only while the tab is visible and the kid has
   // interacted recently, never while backgrounded or idle.
@@ -261,10 +219,10 @@ export function GameBoard({
   const loadMore = useCallback(async () => {
     if (fetchingRef.current || !playerId) return
     fetchingRef.current = true
-    const more = await getQuestions(playerId, BATCH, false, practiceSubject)
+    const more = await getQuestions(playerId, BATCH, false)
     setQuestions((q) => [...q, ...more])
     fetchingRef.current = false
-  }, [playerId, practiceSubject])
+  }, [playerId])
 
   const advance = useCallback(() => {
     setStatus("idle")
@@ -277,11 +235,6 @@ export function GameBoard({
 
   function handleAnswer(option: number, buttonEl: HTMLButtonElement | null) {
     if (status !== "idle" || !current || finished) return
-    // The real subject THIS question belongs to — equals `subject` for a
-    // single-subject sitting, but varies question-to-question in Mixed
-    // Maths (see SubjectQuestion.subject / getMixedQuestions in dojo.ts).
-    const questionSubject = current.subject
-    const questionEngine = getSubjectEngine(questionSubject)
     const answerMs = Date.now() - questionShownAtRef.current
     const isCorrect = option === current.answer
     setChosen(option)
@@ -302,20 +255,17 @@ export function GameBoard({
         })
       }
 
-      // Optimistic Piggy Bank update: mirrors the server's cap logic (via
-      // the same allocateOneAnswer used server-side, so the $4-balanced +
-      // $1-flexible model can't drift out of sync here) so the coin
-      // animation and balance bump feel instant, then gets silently
+      // Optimistic Piggy Bank update: mirrors the server's cap logic so the
+      // coin animation and balance bump feel instant, then gets silently
       // corrected once recordAttempt's authoritative summary comes back.
       if (buttonEl && piggy) {
-        const newWeeklyBreakdown: WeeklyEarningsBucket = {
-          bySubjectCents: { ...piggy.weeklyBreakdown.bySubjectCents },
-          flexibleCents: piggy.weeklyBreakdown.flexibleCents,
-          totalCents: piggy.weeklyBreakdown.totalCents,
-        }
-        const earnedCents = allocateOneAnswer(newWeeklyBreakdown, questionSubject)
+        const willEarn = piggy.earnedThisWeekCents < piggy.weeklyCapCents
+        const earnedCents = willEarn ? 1 : 0
         const newBalanceCents = piggy.balanceCents + earnedCents
-        const newEarnedThisWeekCents = newWeeklyBreakdown.totalCents
+        const newEarnedThisWeekCents = Math.min(
+          piggy.earnedThisWeekCents + earnedCents,
+          piggy.weeklyCapCents,
+        )
         const crossedDime =
           Math.floor(piggy.balanceCents / 10) <
           Math.floor(newBalanceCents / 10)
@@ -331,7 +281,6 @@ export function GameBoard({
           ...piggy,
           balanceCents: newBalanceCents,
           earnedThisWeekCents: newEarnedThisWeekCents,
-          weeklyBreakdown: newWeeklyBreakdown,
           correctThisWeek: piggy.correctThisWeek + 1,
           totalCorrect: piggy.totalCorrect + 1,
           currentStreak: piggy.currentStreak + 1,
@@ -352,31 +301,18 @@ export function GameBoard({
       setStreak(0)
       setCelebration(null)
       setPiggyCelebration(null)
-      if (questionEngine.explainFact) {
-        // Pause and let the kid explore the visuals before continuing —
-        // FactVisuals only has a mnemonic/array visual for subjects whose
-        // engine provides explainFact (currently just multiplication).
-        setReviewing(true)
-      } else {
-        // Other subjects don't have a wrong-answer visual yet: just leave
-        // the correct answer highlighted for a beat, then move on.
-        window.setTimeout(advance, WRONG_ANSWER_PAUSE_MS)
-      }
+      // Pause and let the kid explore the visuals before continuing.
+      setReviewing(true)
     }
 
     void recordAttempt({
       playerId,
       sessionId: sessionIdRef.current,
       mode,
-      subject: questionSubject,
-      practiceSubject,
       a: current.a,
       b: current.b,
       correct: isCorrect,
       answerMs,
-      bandIndex: current.bandIndex,
-      questionKind: current.questionKind,
-      blankSlot: current.blankSlot,
     }).then((res) => {
       if (res.promotions.length > 0) {
         setPromoQueue((q) => [...q, ...res.promotions])
@@ -412,7 +348,6 @@ export function GameBoard({
     <BeltPromotion
       table={promotion.table}
       belt={promotion.belt}
-      subject={promotion.subject}
       onDismiss={() => setPromoQueue((q) => q.slice(1))}
     />
   ) : null
@@ -456,31 +391,8 @@ export function GameBoard({
     )
   }
 
-  // ---- Mixed Maths locked ----
-  if (practiceSubject === "mixed" && mixedEligible === false) {
-    return (
-      <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col items-center justify-center gap-4 px-6 py-10 text-center">
-        <span className="text-5xl" aria-hidden="true">
-          🔒
-        </span>
-        <p className="font-display text-xl font-semibold text-foreground">
-          Mixed Maths isn&apos;t unlocked yet
-        </p>
-        <p className="font-sans text-sm text-foreground/60">
-          Practise a bit more in each subject to unlock Mixed Maths.
-        </p>
-        <Link
-          href="/practice"
-          className="mt-2 flex items-center justify-center gap-2 rounded-2xl bg-primary px-6 py-4 font-display text-lg font-semibold text-primary-foreground transition-transform active:scale-95"
-        >
-          <House className="size-5" /> Choose a subject
-        </Link>
-      </main>
-    )
-  }
-
   // ---- Loading ----
-  if (!current || mixedEligible === null) {
+  if (!current) {
     return (
       <main className="flex min-h-dvh items-center justify-center px-6">
         <p className="animate-pulse font-display text-xl text-foreground/60">
@@ -573,39 +485,18 @@ export function GameBoard({
 
       {/* Equation */}
       <div className="flex flex-1 flex-col items-center justify-center">
-        {current.questionKind === "missingOperand" ? (
-          <div
-            className={cn(
-              "font-mono text-5xl font-bold tabular-nums transition-colors sm:text-6xl",
-              status === "correct" && "text-secondary",
-              status === "wrong" && "text-destructive",
-              status === "idle" && "text-foreground",
-            )}
-            aria-live="polite"
-          >
-            {current.blankSlot === "a" ? "▢" : current.a}{" "}
-            <span className="text-primary">{OPERATOR_SYMBOL[current.subject]}</span>{" "}
-            {current.blankSlot === "b" ? "▢" : current.b}{" "}
-            <span className="text-foreground/40">=</span> {current.displayResult}
-          </div>
-        ) : (
-          <>
-            <div
-              className={cn(
-                "font-mono text-7xl font-bold tabular-nums transition-colors sm:text-8xl",
-                status === "correct" && "text-secondary",
-                status === "wrong" && "text-destructive",
-                status === "idle" && "text-foreground",
-              )}
-              aria-live="polite"
-            >
-              {current.a}{" "}
-              <span className="text-primary">{OPERATOR_SYMBOL[current.subject]}</span>{" "}
-              {current.b}
-            </div>
-            <div className="mt-2 font-mono text-4xl text-foreground/30">=</div>
-          </>
-        )}
+        <div
+          className={cn(
+            "font-mono text-7xl font-bold tabular-nums transition-colors sm:text-8xl",
+            status === "correct" && "text-secondary",
+            status === "wrong" && "text-destructive",
+            status === "idle" && "text-foreground",
+          )}
+          aria-live="polite"
+        >
+          {current.a} <span className="text-primary">×</span> {current.b}
+        </div>
+        <div className="mt-2 font-mono text-4xl text-foreground/30">=</div>
       </div>
 
       {/* Answers 2x2 */}
