@@ -10,7 +10,6 @@ import {
 import { BeltPromotion } from "@/components/belt-promotion"
 import { FactVisuals } from "@/components/fact-visuals"
 import { PersonalBestCelebration } from "@/components/personal-best-celebration"
-import { useTheme } from "@/components/theme-provider"
 import { DAILY_GOAL_SECONDS, PiggyBank } from "@/components/piggy-bank"
 import {
   PiggyCelebration,
@@ -31,7 +30,6 @@ import Link from "next/link"
 import { useCallback, useEffect, useRef, useState } from "react"
 
 const BATCH = 12
-const SPRINT_SECONDS = 60
 const FLASH_MS = 650
 // Correct answers that land on a streak milestone get a slightly longer
 // beat so the "5 STREAK!" banner has time to read before the next question.
@@ -66,7 +64,6 @@ const EMPTY_PIGGY: PiggyBankSummary = {
 type Status = "idle" | "correct" | "wrong"
 
 export function GameBoard({ mode }: { mode: Mode }) {
-  const { theme } = useTheme()
   const [playerId, setPlayerId] = useState("")
   const sessionIdRef = useRef("")
   const [questions, setQuestions] = useState<Question[]>([])
@@ -82,10 +79,6 @@ export function GameBoard({ mode }: { mode: Mode }) {
   const [streak, setStreak] = useState(0)
   const [answered, setAnswered] = useState(0)
   const [correctCount, setCorrectCount] = useState(0)
-
-  // Sprint state
-  const [timeLeft, setTimeLeft] = useState(SPRINT_SECONDS)
-  const [finished, setFinished] = useState(false)
 
   // Belt promotion celebration queue.
   const [promoQueue, setPromoQueue] = useState<BeltPromotionData[]>([])
@@ -134,8 +127,6 @@ export function GameBoard({ mode }: { mode: Mode }) {
     setStreak(0)
     setAnswered(0)
     setCorrectCount(0)
-    setTimeLeft(SPRINT_SECONDS)
-    setFinished(false)
     setPromoQueue([])
     setCelebration(null)
     setPiggyCelebration(null)
@@ -204,26 +195,6 @@ export function GameBoard({ mode }: { mode: Mode }) {
     }
   }, [playerId])
 
-  // Sprint countdown starts once the first question is on screen. It pauses
-  // while a belt promotion celebration OR the wrong-answer visuals are on
-  // screen so exploring them never burns the kid's time.
-  useEffect(() => {
-    if (
-      mode !== "sprint" ||
-      finished ||
-      questions.length === 0 ||
-      promotion ||
-      reviewing
-    )
-      return
-    if (timeLeft <= 0) {
-      setFinished(true)
-      return
-    }
-    const t = setTimeout(() => setTimeLeft((s) => s - 1), 1000)
-    return () => clearTimeout(t)
-  }, [mode, finished, timeLeft, questions.length, promotion, reviewing])
-
   const current = questions[idx]
 
   // Reset the "question shown at" clock every time a new question appears.
@@ -254,7 +225,7 @@ export function GameBoard({ mode }: { mode: Mode }) {
     buttonEl: HTMLButtonElement | null,
     typed = false,
   ) {
-    if (status !== "idle" || !current || finished) return
+    if (status !== "idle" || !current) return
     const elapsed = Date.now() - questionShownAtRef.current
     const answerMs = typed
       ? Math.max(0, elapsed - TYPING_ALLOWANCE_MS * String(option).length)
@@ -387,7 +358,7 @@ export function GameBoard({ mode }: { mode: Mode }) {
   }
 
   const isTyped = Boolean(current?.typed)
-  const inputOpen = isTyped && status === "idle" && !reviewing && !finished
+  const inputOpen = isTyped && status === "idle" && !reviewing
 
   function pressDigit(d: string) {
     if (!inputOpen) return
@@ -422,45 +393,6 @@ export function GameBoard({ mode }: { mode: Mode }) {
       onDismiss={() => setPromoQueue((q) => q.slice(1))}
     />
   ) : null
-
-  // ---- Sprint results screen ----
-  if (mode === "sprint" && finished) {
-    const accuracy =
-      answered > 0 ? Math.round((correctCount / answered) * 100) : 0
-    return (
-      <main className="mx-auto flex min-h-dvh w-full max-w-lg flex-col items-center justify-center gap-8 px-6 py-10 text-center">
-        {promoOverlay}
-        <p className="font-display text-xl text-primary">Time&apos;s up!</p>
-        <div className="w-full rounded-2xl bg-card px-8 py-10 text-card-foreground shadow-xl">
-          <p className="font-display text-lg text-card-foreground/70">
-            You answered
-          </p>
-          <p className="font-mono text-6xl font-bold text-card-foreground">
-            {correctCount}
-            <span className="text-card-foreground/40">/{answered}</span>
-          </p>
-          <p className="mt-2 font-mono text-2xl font-semibold text-secondary">
-            {accuracy}% correct
-          </p>
-        </div>
-        <div className="flex w-full flex-col gap-3">
-          <button
-            type="button"
-            onClick={() => startSitting(playerId)}
-            className="flex items-center justify-center gap-2 rounded-2xl bg-primary px-6 py-4 font-display text-xl font-semibold text-primary-foreground transition-transform active:scale-95"
-          >
-            Sprint again
-          </button>
-          <Link
-            href="/"
-            className="flex items-center justify-center gap-2 rounded-2xl border border-border px-6 py-4 font-display text-lg text-foreground transition-colors hover:bg-muted"
-          >
-            <House className="size-5" /> Back to the {theme.homeName}
-          </Link>
-        </div>
-      </main>
-    )
-  }
 
   // ---- Loading ----
   if (!current) {
@@ -516,8 +448,7 @@ export function GameBoard({ mode }: { mode: Mode }) {
           <House className="size-5" />
         </Link>
 
-        {mode === "practice" ? (
-          <div
+        <div
             ref={streakBadgeRef}
             className="flex items-center gap-2 rounded-full bg-muted px-4 py-2"
           >
@@ -539,9 +470,6 @@ export function GameBoard({ mode }: { mode: Mode }) {
               {streak}
             </span>
           </div>
-        ) : (
-          <SprintTimer timeLeft={timeLeft} />
-        )}
       </div>
 
       {/* Piggy Bank */}
@@ -682,19 +610,3 @@ export function GameBoard({ mode }: { mode: Mode }) {
   )
 }
 
-function SprintTimer({ timeLeft }: { timeLeft: number }) {
-  const pct = (timeLeft / SPRINT_SECONDS) * 100
-  return (
-    <div className="flex items-center gap-3">
-      <div className="h-2.5 w-32 overflow-hidden rounded-full bg-muted">
-        <div
-          className="h-full rounded-full bg-primary transition-[width] duration-1000 ease-linear"
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-      <span className="w-8 text-right font-mono text-lg font-bold text-foreground tabular-nums">
-        {timeLeft}
-      </span>
-    </div>
-  )
-}

@@ -1,5 +1,6 @@
-import { GameBoard } from "@/components/game-board"
+import { redirect } from "next/navigation"
 
+// Sprint mode was retired — keep old bookmarks working.
 export default function SprintPage() {
-  return <GameBoard mode="sprint" />
+  redirect("/practice")
 }

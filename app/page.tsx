@@ -3,7 +3,7 @@
 import { ThemePicker } from "@/components/theme-picker"
 import { useTheme } from "@/components/theme-provider"
 import { cn } from "@/lib/utils"
-import { Clock, Flame, ShieldCheck, Trophy, Users } from "lucide-react"
+import { Flame, ShieldCheck, Trophy, Users } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
 import { useState } from "react"
@@ -68,20 +68,7 @@ export default function HomePage() {
           <span className="flex flex-col">
             <span className="font-display text-2xl font-semibold">Practice</span>
             <span className="font-sans text-sm text-secondary-foreground/80">
-              No clock. Just you and the numbers.
-            </span>
-          </span>
-        </Link>
-
-        <Link
-          href="/sprint"
-          className="group flex items-center gap-4 rounded-3xl bg-primary px-6 py-5 text-primary-foreground shadow-lg transition-transform active:scale-[0.98]"
-        >
-          <Clock className="size-8 shrink-0" />
-          <span className="flex flex-col">
-            <span className="font-display text-2xl font-semibold">Sprint</span>
-            <span className="font-sans text-sm text-primary-foreground/80">
-              60 seconds. How many can you land?
+              Just you and the numbers.
             </span>
           </span>
         </Link>

@@ -361,7 +361,7 @@ export function parentReport(allAttempts: Attempt[]): ParentReport {
     recommendation = `Focus area: ${list}. These come up first in the next session — a few minutes of daily Practice will help them stick.`
   } else if (masteryPercent >= 90) {
     recommendation =
-      "Nearly every fact is mastered. Sprint mode is great for keeping recall fast and confident."
+      "Nearly every fact is mastered. Keep practising little and often to keep recall fast and confident."
   } else {
     recommendation =
       "Steady progress with no trouble spots flagged. Keep up short, regular Practice sessions to build mastery across all tables."

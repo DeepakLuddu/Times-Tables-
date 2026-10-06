@@ -25,8 +25,6 @@ export interface Theme {
   appName: string
   tagline: string
   mascotLabel: string
-  /** "Back to the ___" after a sprint. */
-  homeName: string
   /** Rank ladder: a title per tier, a noun ("Belt"/"Rank"...) and a glyph per tier. */
   ranks: Record<Belt, string>
   rankNoun: string
@@ -61,7 +59,6 @@ export const THEMES: Record<ThemeId, Theme> = {
     appName: "Ninja Dojo",
     tagline: "Earn your black belt in the times tables, one fact at a time.",
     mascotLabel: "Ninja Dojo mascot, a red panda in a karate gi",
-    homeName: "dojo",
     ranks: ladder(["White", "Yellow", "Green", "Blue", "Purple", "Brown", "Black"]),
     rankNoun: "Belt",
     rankNounPlural: "Belts",
@@ -82,7 +79,6 @@ export const THEMES: Record<ThemeId, Theme> = {
     appName: "Space Academy",
     tagline: "Blast off to Galaxy Master, one fact at a time.",
     mascotLabel: "Space Academy mascot, an astronaut rocket",
-    homeName: "space station",
     ranks: ladder(["Cadet", "Explorer", "Pilot", "Navigator", "Commander", "Captain", "Galaxy Master"]),
     rankNoun: "Rank",
     rankNounPlural: "Ranks",
@@ -103,7 +99,6 @@ export const THEMES: Record<ThemeId, Theme> = {
     appName: "Block Builder",
     tagline: "Build your way to City Legend, one fact at a time.",
     mascotLabel: "Block Builder mascot, a friendly builder with bricks",
-    homeName: "workshop",
     ranks: ladder(["Apprentice", "Builder", "Crafter", "Architect", "Designer", "Master Builder", "City Legend"]),
     rankNoun: "Level",
     rankNounPlural: "Levels",
@@ -124,7 +119,6 @@ export const THEMES: Record<ThemeId, Theme> = {
     appName: "Magic Academy",
     tagline: "Cast your way to Grand Wizard, one fact at a time.",
     mascotLabel: "Magic Academy mascot, a wizard with a wand",
-    homeName: "academy",
     ranks: ladder(["Novice", "Apprentice", "Charmer", "Enchanter", "Sorcerer", "Archmage", "Grand Wizard"]),
     rankNoun: "Rank",
     rankNounPlural: "Ranks",
@@ -145,7 +139,6 @@ export const THEMES: Record<ThemeId, Theme> = {
     appName: "Animal Adventure",
     tagline: "Explore your way to Wild Legend, one fact at a time.",
     mascotLabel: "Animal Adventure mascot, a friendly fox explorer",
-    homeName: "jungle",
     ranks: ladder(["Hatchling", "Cub", "Scout", "Ranger", "Guardian", "Pack Leader", "Wild Legend"]),
     rankNoun: "Badge",
     rankNounPlural: "Badges",
@@ -166,7 +159,6 @@ export const THEMES: Record<ThemeId, Theme> = {
     appName: "Hero Academy",
     tagline: "Power up to Legend, one fact at a time.",
     mascotLabel: "Hero Academy mascot, a caped hero",
-    homeName: "headquarters",
     ranks: ladder(["Rookie", "Sidekick", "Defender", "Guardian", "Champion", "Captain", "Legend"]),
     rankNoun: "Rank",
     rankNounPlural: "Ranks",
