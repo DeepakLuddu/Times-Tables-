@@ -136,7 +136,7 @@ export function BeltWall() {
         </p>
       ) : (
         <>
-          <BeltJourney tables={data.mastery} />
+          <BeltJourney tables={data.mastery} onSelectTable={setSelected} />
 
           {/* Belt grid */}
           <div className="mt-4 grid grid-cols-3 gap-3 sm:grid-cols-4">

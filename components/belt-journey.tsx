@@ -53,8 +53,16 @@ function pathPosition(percent: number): number {
   return last
 }
 
-export function BeltJourney({ tables }: { tables: TableMastery[] }) {
+export function BeltJourney({
+  tables,
+  onSelectTable,
+}: {
+  tables: TableMastery[]
+  /** Open a table's full breakdown (same as tapping its card below). */
+  onSelectTable?: (m: TableMastery) => void
+}) {
   const { theme } = useTheme()
+  const [openTier, setOpenTier] = useState<Belt | null>(null)
   const stops = BELT_THRESHOLDS
   const lastIdx = stops.length - 1
 
@@ -67,11 +75,12 @@ export function BeltJourney({ tables }: { tables: TableMastery[] }) {
 
   // Tables currently sitting at each rank (a challenge-ready table hasn't
   // earned the top rank yet, so it counts one below).
-  const counts: Partial<Record<Belt, number>> = {}
+  const byTier: Partial<Record<Belt, TableMastery[]>> = {}
   for (const m of tables) {
     const tier: Belt = m.state === "challengeReady" ? "brown" : m.belt
-    counts[tier] = (counts[tier] ?? 0) + 1
+    ;(byTier[tier] ??= []).push(m)
   }
+  const openTables = openTier ? [...(byTier[openTier] ?? [])].sort((a, b) => a.table - b.table) : []
 
   // Animate the fill/marker in from the start on first paint.
   const [shown, setShown] = useState(false)
@@ -142,7 +151,8 @@ export function BeltJourney({ tables }: { tables: TableMastery[] }) {
           {stops.map((t, i) => {
             const reached = overall >= t.min
             const isNext = nextIdx === i
-            const here = counts[t.belt] ?? 0
+            const here = byTier[t.belt]?.length ?? 0
+            const isOpen = openTier === t.belt
             return (
               <div key={t.belt} className="flex flex-1 flex-col items-center gap-1">
                 <span
@@ -165,15 +175,24 @@ export function BeltJourney({ tables }: { tables: TableMastery[] }) {
                 >
                   {theme.id === "ninja" ? BELT_LABEL[t.belt] : theme.ranks[t.belt]}
                 </span>
-                <span
-                  className={cn(
-                    "min-h-[14px] rounded-full px-1.5 font-mono text-[9px] font-bold leading-[14px]",
-                    here > 0 ? "bg-primary/25 text-card-foreground" : "text-transparent",
-                  )}
-                  aria-label={here > 0 ? `${here} tables at ${fullName(t.belt)}` : undefined}
-                >
-                  {here > 0 ? `×${here}` : "·"}
-                </span>
+                {here > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => setOpenTier(isOpen ? null : t.belt)}
+                    aria-expanded={isOpen}
+                    aria-label={`${here} ${here === 1 ? "table" : "tables"} at ${fullName(t.belt)} — tap to see them`}
+                    className={cn(
+                      "min-h-[20px] rounded-full px-2 font-mono text-[10px] font-bold leading-5 transition-colors active:scale-95",
+                      isOpen
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-primary/25 text-card-foreground hover:bg-primary/40",
+                    )}
+                  >
+                    ×{here}
+                  </button>
+                ) : (
+                  <span className="min-h-[20px]" aria-hidden="true" />
+                )}
                 {i === lastIdx && (
                   <span className="-mt-1 text-center font-sans text-[8px] leading-tight text-card-foreground/40">
                     Full Mastery
@@ -184,6 +203,48 @@ export function BeltJourney({ tables }: { tables: TableMastery[] }) {
           })}
         </div>
       </div>
+
+      {openTier && (
+        <div className="mt-3 rounded-xl bg-card-foreground/10 px-3 py-3">
+          <div className="flex items-center justify-between gap-2">
+            <p className="font-display text-sm font-semibold text-card-foreground">
+              {fullName(openTier)} · {openTables.length}{" "}
+              {openTables.length === 1 ? "table" : "tables"}
+            </p>
+            <button
+              type="button"
+              onClick={() => setOpenTier(null)}
+              aria-label="Close"
+              className="flex size-6 items-center justify-center rounded-full text-card-foreground/50 hover:bg-card hover:text-card-foreground"
+            >
+              ✕
+            </button>
+          </div>
+          <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
+            {openTables.map((m) => (
+              <button
+                key={m.table}
+                type="button"
+                onClick={() => onSelectTable?.(m)}
+                className="flex flex-col items-center rounded-lg bg-card px-2 py-1.5 text-card-foreground shadow-sm transition-transform active:scale-95"
+              >
+                <span className="font-mono text-base font-bold">{m.table}×</span>
+                <span className="font-mono text-[10px] text-card-foreground/60">
+                  {m.percent}%
+                </span>
+                {m.state === "challengeReady" && (
+                  <span className="font-sans text-[9px] font-semibold text-primary">
+                    {theme.challenge} ready
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+          <p className="mt-2 text-center font-sans text-[10px] text-card-foreground/50">
+            Tap a table to see its full breakdown
+          </p>
+        </div>
+      )}
 
       <p className="mt-2 text-center font-sans text-xs text-card-foreground/70">
         {next
