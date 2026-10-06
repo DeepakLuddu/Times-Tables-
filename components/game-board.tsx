@@ -10,12 +10,13 @@ import {
 import { BeltPromotion } from "@/components/belt-promotion"
 import { FactVisuals } from "@/components/fact-visuals"
 import { PersonalBestCelebration } from "@/components/personal-best-celebration"
+import { useTheme } from "@/components/theme-provider"
 import { DAILY_GOAL_SECONDS, PiggyBank } from "@/components/piggy-bank"
 import {
   PiggyCelebration,
   type PiggyCelebrationData,
 } from "@/components/piggy-celebration"
-import type { Mode, Question } from "@/lib/engine"
+import { type Mode, type Question, makeQuestion } from "@/lib/engine"
 import type { BeltPromotion as BeltPromotionData } from "@/lib/insights"
 import type { PersonalBestDelta } from "@/lib/personal-bests"
 import { getPlayerId, newSessionId } from "@/lib/player"
@@ -35,6 +36,15 @@ const FLASH_MS = 650
 // Correct answers that land on a streak milestone get a slightly longer
 // beat so the "5 STREAK!" banner has time to read before the next question.
 const MILESTONE_FLASH_MS = 900
+// A missed fact comes back after this many other questions (min..max), so
+// the kid gets a second go while it's still fresh, but not while the answer
+// is still sitting in their head from a moment ago.
+const RETRY_GAP_MIN = 3
+const RETRY_GAP_MAX = 5
+// Typed answers include typing time; credit this much per digit so the
+// speed signal still measures recall, not finger speed.
+const TYPING_ALLOWANCE_MS = 400
+const MAX_TYPED_DIGITS = 3
 // The kid should never be left staring at a page with no interaction for
 // this long and still have it count as "active practice."
 const IDLE_MS = 30_000
@@ -56,12 +66,16 @@ const EMPTY_PIGGY: PiggyBankSummary = {
 type Status = "idle" | "correct" | "wrong"
 
 export function GameBoard({ mode }: { mode: Mode }) {
+  const { theme } = useTheme()
   const [playerId, setPlayerId] = useState("")
   const sessionIdRef = useRef("")
   const [questions, setQuestions] = useState<Question[]>([])
   const [idx, setIdx] = useState(0)
   const [status, setStatus] = useState<Status>("idle")
   const [chosen, setChosen] = useState<number | null>(null)
+  // Digits typed so far for a typed-answer question.
+  const [typedStr, setTypedStr] = useState("")
+  const submitRef = useRef<HTMLButtonElement>(null)
   // After a wrong answer we pause and show pickable visuals; the kid taps to
   // continue when they're ready.
   const [reviewing, setReviewing] = useState(false)
@@ -115,6 +129,7 @@ export function GameBoard({ mode }: { mode: Mode }) {
     setIdx(0)
     setStatus("idle")
     setChosen(null)
+    setTypedStr("")
     setReviewing(false)
     setStreak(0)
     setAnswered(0)
@@ -227,15 +242,23 @@ export function GameBoard({ mode }: { mode: Mode }) {
   const advance = useCallback(() => {
     setStatus("idle")
     setChosen(null)
+    setTypedStr("")
     setReviewing(false)
     setCelebration(null)
     setPiggyCelebration(null)
     setIdx((i) => i + 1)
   }, [])
 
-  function handleAnswer(option: number, buttonEl: HTMLButtonElement | null) {
+  function handleAnswer(
+    option: number,
+    buttonEl: HTMLButtonElement | null,
+    typed = false,
+  ) {
     if (status !== "idle" || !current || finished) return
-    const answerMs = Date.now() - questionShownAtRef.current
+    const elapsed = Date.now() - questionShownAtRef.current
+    const answerMs = typed
+      ? Math.max(0, elapsed - TYPING_ALLOWANCE_MS * String(option).length)
+      : elapsed
     const isCorrect = option === current.answer
     setChosen(option)
     setStatus(isCorrect ? "correct" : "wrong")
@@ -303,6 +326,25 @@ export function GameBoard({ mode }: { mode: Mode }) {
       setPiggyCelebration(null)
       // Pause and let the kid explore the visuals before continuing.
       setReviewing(true)
+      // Spaced retry: slot the same fact back in a few questions from now,
+      // unless one is already queued ahead.
+      const missed = current
+      const missedAt = idx
+      setQuestions((qs) => {
+        if (qs.slice(missedAt + 1).some((q) => q.factKey === missed.factKey)) {
+          return qs
+        }
+        const gap =
+          RETRY_GAP_MIN +
+          Math.floor(Math.random() * (RETRY_GAP_MAX - RETRY_GAP_MIN + 1))
+        const retry = makeQuestion([
+          Math.min(missed.a, missed.b),
+          Math.max(missed.a, missed.b),
+        ])
+        const next = [...qs]
+        next.splice(missedAt + 1 + gap, 0, retry)
+        return next
+      })
     }
 
     void recordAttempt({
@@ -344,6 +386,35 @@ export function GameBoard({ mode }: { mode: Mode }) {
     }
   }
 
+  const isTyped = Boolean(current?.typed)
+  const inputOpen = isTyped && status === "idle" && !reviewing && !finished
+
+  function pressDigit(d: string) {
+    if (!inputOpen) return
+    setTypedStr((s) => (s.length >= MAX_TYPED_DIGITS ? s : s + d))
+  }
+  function backspace() {
+    if (!inputOpen) return
+    setTypedStr((s) => s.slice(0, -1))
+  }
+  function submitTyped() {
+    if (!inputOpen || typedStr === "") return
+    handleAnswer(Number(typedStr), submitRef.current, true)
+  }
+
+  // Physical keyboard support for typed answers (re-bound each render so it
+  // always sees the latest typedStr/handler — cheap, and avoids stale closures).
+  useEffect(() => {
+    if (!inputOpen) return
+    function onKey(e: KeyboardEvent) {
+      if (e.key >= "0" && e.key <= "9") pressDigit(e.key)
+      else if (e.key === "Backspace") backspace()
+      else if (e.key === "Enter") submitTyped()
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  })
+
   const promoOverlay = promotion ? (
     <BeltPromotion
       table={promotion.table}
@@ -384,7 +455,7 @@ export function GameBoard({ mode }: { mode: Mode }) {
             href="/"
             className="flex items-center justify-center gap-2 rounded-2xl border border-border px-6 py-4 font-display text-lg text-foreground transition-colors hover:bg-muted"
           >
-            <House className="size-5" /> Back to the dojo
+            <House className="size-5" /> Back to the {theme.homeName}
           </Link>
         </div>
       </main>
@@ -496,11 +567,77 @@ export function GameBoard({ mode }: { mode: Mode }) {
         >
           {current.a} <span className="text-primary">×</span> {current.b}
         </div>
-        <div className="mt-2 font-mono text-4xl text-foreground/30">=</div>
+        {isTyped ? (
+          <div
+            className={cn(
+              "mt-2 flex items-center gap-3 font-mono text-5xl font-bold tabular-nums",
+              status === "idle" && "text-foreground",
+              status === "correct" && "text-secondary",
+              status === "wrong" && "text-destructive",
+            )}
+            aria-live="polite"
+          >
+            <span className="text-foreground/30">=</span>
+            <span className="min-w-[3ch] text-center">
+              {status === "idle" ? typedStr || "?" : chosen}
+            </span>
+            {status === "wrong" && (
+              <span className="text-2xl text-secondary">
+                it&apos;s {current.answer}
+              </span>
+            )}
+          </div>
+        ) : (
+          <div className="mt-2 font-mono text-4xl text-foreground/30">=</div>
+        )}
       </div>
 
+      {/* Typed answer keypad — only for facts that are already secure */}
+      {isTyped && !reviewing && (
+        <div className="grid grid-cols-3 gap-2 pb-4">
+          {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((d) => (
+            <button
+              key={d}
+              type="button"
+              disabled={!inputOpen}
+              onClick={() => pressDigit(d)}
+              className="flex h-16 items-center justify-center rounded-2xl bg-card font-mono text-3xl font-bold text-card-foreground shadow-md transition-transform active:scale-95"
+            >
+              {d}
+            </button>
+          ))}
+          <button
+            type="button"
+            aria-label="Delete last digit"
+            disabled={!inputOpen}
+            onClick={backspace}
+            className="flex h-16 items-center justify-center rounded-2xl bg-muted font-mono text-3xl font-bold text-foreground shadow-md transition-transform active:scale-95"
+          >
+            ⌫
+          </button>
+          <button
+            type="button"
+            disabled={!inputOpen}
+            onClick={() => pressDigit("0")}
+            className="flex h-16 items-center justify-center rounded-2xl bg-card font-mono text-3xl font-bold text-card-foreground shadow-md transition-transform active:scale-95"
+          >
+            0
+          </button>
+          <button
+            ref={submitRef}
+            type="button"
+            aria-label="Submit answer"
+            disabled={!inputOpen || typedStr === ""}
+            onClick={submitTyped}
+            className="flex h-16 items-center justify-center rounded-2xl bg-primary font-mono text-3xl font-bold text-primary-foreground shadow-md transition-transform active:scale-95 disabled:opacity-40"
+          >
+            ✓
+          </button>
+        </div>
+      )}
+
       {/* Answers 2x2 */}
-      <div className="grid grid-cols-2 gap-3 pb-4">
+      <div className={cn("grid grid-cols-2 gap-3 pb-4", isTyped && "hidden")}>
         {current.options.map((opt) => {
           const isChosen = chosen === opt
           const isAnswer = opt === current.answer

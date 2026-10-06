@@ -3,6 +3,7 @@
 import { getRecentWins } from "@/app/actions/recentwins"
 import { formatWinDate, type RecentWinsData } from "@/lib/recent-wins"
 import { getPlayerId } from "@/lib/player"
+import { useTheme } from "@/components/theme-provider"
 import { Sparkles, Target } from "lucide-react"
 import { useEffect, useState } from "react"
 
@@ -18,6 +19,7 @@ function isToday(iso: string): boolean {
 
 export function RecentWinsSection({ playerId }: { playerId: string }) {
   const [data, setData] = useState<RecentWinsData | null>(null)
+  const { localize } = useTheme()
 
   useEffect(() => {
     const pid = playerId || getPlayerId()
@@ -34,7 +36,7 @@ export function RecentWinsSection({ playerId }: { playerId: string }) {
             Best thing you did today
           </h2>
           <p className="mt-1 text-balance font-display text-lg font-semibold text-foreground">
-            {data.bestToday}
+            {localize(data.bestToday)}
           </p>
         </section>
       )}
@@ -47,7 +49,7 @@ export function RecentWinsSection({ playerId }: { playerId: string }) {
           </h2>
         </div>
         <p className="mt-1 text-balance font-display text-lg font-semibold text-foreground">
-          {data.nextChallenge}
+          {localize(data.nextChallenge)}
         </p>
       </section>
 
@@ -68,10 +70,10 @@ export function RecentWinsSection({ playerId }: { playerId: string }) {
                 className="flex items-center gap-3 rounded-2xl bg-card px-4 py-3 text-card-foreground shadow-sm"
               >
                 <span className="text-xl leading-none" aria-hidden="true">
-                  {w.icon}
+                  {localize(w.icon)}
                 </span>
                 <span className="flex-1 font-sans text-sm font-medium">
-                  {w.text}
+                  {localize(w.text)}
                 </span>
                 <span className="font-sans text-xs text-card-foreground/40">
                   {isToday(w.date) ? "Today" : formatWinDate(w.date)}

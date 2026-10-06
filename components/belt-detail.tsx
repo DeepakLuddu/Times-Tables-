@@ -1,8 +1,9 @@
 "use client"
 
-import { Belt } from "@/components/belt"
+import { RankMark } from "@/components/rank-mark"
+import { useTheme } from "@/components/theme-provider"
+import { rankName } from "@/lib/themes"
 import { AnimatedPercentLabel, MasteryBar } from "@/components/mastery-bar"
-import { BELT_LABEL } from "@/lib/engine"
 import type { MasteryComponent, TableMastery } from "@/lib/mastery"
 import { cn } from "@/lib/utils"
 import { Check, X } from "lucide-react"
@@ -28,6 +29,7 @@ export function BeltDetail({
   mastery: TableMastery
   onClose: () => void
 }) {
+  const { theme, localize } = useTheme()
   const rows = DISPLAY_KEYS.map((key) =>
     mastery.components.find((c) => c.key === key),
   ).filter((c): c is MasteryComponent => c !== undefined)
@@ -58,10 +60,11 @@ export function BeltDetail({
             <p className="font-display text-lg font-semibold">
               {mastery.table} Times Table
             </p>
-            <Belt
+            <RankMark
               tier={mastery.belt}
               locked={isChallengeReady}
               className="mt-1 h-3 w-16"
+              size="sm"
             />
           </div>
           <button
@@ -77,7 +80,7 @@ export function BeltDetail({
         {isMastered ? (
           <div className="mt-4 flex flex-col items-center gap-1 rounded-xl bg-belt-black px-4 py-5 text-center">
             <span className="font-display text-lg font-bold uppercase tracking-wide text-white">
-              Black Belt
+              {rankName(theme, "black")}
             </span>
             <span className="font-mono text-4xl font-bold tabular-nums text-white">
               100%
@@ -90,7 +93,7 @@ export function BeltDetail({
           <>
             <div className="mt-4 flex items-baseline justify-between">
               <span className="font-display text-base font-semibold">
-                {BELT_LABEL[mastery.belt]} Belt
+                {rankName(theme, mastery.belt)}
                 {!isChallengeReady && (
                   <>
                     {" — "}
@@ -111,7 +114,7 @@ export function BeltDetail({
                 isChallengeReady ? "text-primary" : "text-foreground/60",
               )}
             >
-              {mastery.stateLabel}
+              {localize(mastery.stateLabel)}
             </p>
           </>
         )}
@@ -146,7 +149,7 @@ export function BeltDetail({
             className="mt-5 flex w-full flex-col items-center gap-1 rounded-2xl bg-belt-black px-6 py-4 text-center transition-transform active:scale-[0.98]"
           >
             <span className="font-display text-lg font-bold text-white">
-              Take Belt Challenge
+              Take {theme.challenge}
             </span>
             <span className="font-sans text-xs text-white/70">
               One more correct answer in this table completes it

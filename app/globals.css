@@ -91,6 +91,154 @@
   --belt-black: #171c30;
 }
 
+/* ---- Child-selectable worlds (see lib/themes.ts) ----
+   Each block only overrides colours; the default (Ninja Dojo) is :root above.
+   Cards stay light and the page stays dark in every world so text contrast
+   is the same everywhere. */
+:root[data-theme='space'] {
+  --background: #0b1026;
+  --foreground: #eaf0ff;
+  --card: #eaf0ff;
+  --card-foreground: #0b1026;
+  --popover: #eaf0ff;
+  --popover-foreground: #0b1026;
+  --primary: #5ee6ff;
+  --primary-foreground: #0b1026;
+  --secondary: #6b4fe0;
+  --secondary-foreground: #ffffff;
+  --muted: #1a2147;
+  --muted-foreground: #a9b4e0;
+  --accent: #5ee6ff;
+  --accent-foreground: #0b1026;
+  --border: #2b3677;
+  --input: #2b3677;
+  --ring: #5ee6ff;
+  --belt-black: #0a0f24;
+}
+
+:root[data-theme='blocks'] {
+  --background: #1e2b22;
+  --foreground: #f6f0dd;
+  --card: #f3ecd9;
+  --card-foreground: #1e2b22;
+  --popover: #f3ecd9;
+  --popover-foreground: #1e2b22;
+  --primary: #ffb020;
+  --primary-foreground: #1e2b22;
+  --secondary: #4a9a3c;
+  --secondary-foreground: #ffffff;
+  --muted: #2b3d2f;
+  --muted-foreground: #b9c8b3;
+  --accent: #ffb020;
+  --accent-foreground: #1e2b22;
+  --border: #3c5a42;
+  --input: #3c5a42;
+  --ring: #ffb020;
+  --belt-black: #15201a;
+  --radius: 0.5rem;
+}
+
+:root[data-theme='magic'] {
+  --background: #241338;
+  --foreground: #f6eefc;
+  --card: #f6eefc;
+  --card-foreground: #241338;
+  --popover: #f6eefc;
+  --popover-foreground: #241338;
+  --primary: #ffd36e;
+  --primary-foreground: #241338;
+  --secondary: #9b45e6;
+  --secondary-foreground: #ffffff;
+  --muted: #36204f;
+  --muted-foreground: #c9b6e0;
+  --accent: #ffd36e;
+  --accent-foreground: #241338;
+  --border: #54337a;
+  --input: #54337a;
+  --ring: #ffd36e;
+  --belt-black: #1a0d2b;
+}
+
+:root[data-theme='animal'] {
+  --background: #12332f;
+  --foreground: #fff6e3;
+  --card: #fff6e3;
+  --card-foreground: #12332f;
+  --popover: #fff6e3;
+  --popover-foreground: #12332f;
+  --primary: #ff9f43;
+  --primary-foreground: #12332f;
+  --secondary: #1f9d6a;
+  --secondary-foreground: #ffffff;
+  --muted: #1d4a44;
+  --muted-foreground: #b5d6cc;
+  --accent: #ff9f43;
+  --accent-foreground: #12332f;
+  --border: #2c6a60;
+  --input: #2c6a60;
+  --ring: #ff9f43;
+  --belt-black: #0c2420;
+  --radius: 1.4rem;
+}
+
+:root[data-theme='hero'] {
+  --background: #1f0f16;
+  --foreground: #fff4e6;
+  --card: #fff4e6;
+  --card-foreground: #1f0f16;
+  --popover: #fff4e6;
+  --popover-foreground: #1f0f16;
+  --primary: #ffcf26;
+  --primary-foreground: #1f0f16;
+  --secondary: #2f6bff;
+  --secondary-foreground: #ffffff;
+  --muted: #3a1a26;
+  --muted-foreground: #dcb8c4;
+  --accent: #ffcf26;
+  --accent-foreground: #1f0f16;
+  --border: #5c2a3c;
+  --input: #5c2a3c;
+  --ring: #ffcf26;
+  --belt-black: #150a0f;
+}
+
+/* A little atmosphere behind each world (decorative, fixed, never blocks taps). */
+body {
+  background-attachment: fixed;
+}
+:root[data-theme='space'] body {
+  background-image:
+    radial-gradient(1.5px 1.5px at 20% 30%, #ffffffaa, transparent),
+    radial-gradient(1px 1px at 70% 20%, #ffffff88, transparent),
+    radial-gradient(1.5px 1.5px at 85% 70%, #ffffffaa, transparent),
+    radial-gradient(1px 1px at 35% 80%, #ffffff77, transparent),
+    radial-gradient(1px 1px at 55% 55%, #ffffff66, transparent);
+  background-size: 260px 260px;
+}
+:root[data-theme='blocks'] body {
+  background-image:
+    linear-gradient(#ffffff08 1px, transparent 1px),
+    linear-gradient(90deg, #ffffff08 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+:root[data-theme='magic'] body {
+  background-image:
+    radial-gradient(circle at 15% 20%, #9b45e633, transparent 40%),
+    radial-gradient(circle at 85% 80%, #ffd36e22, transparent 40%);
+}
+:root[data-theme='animal'] body {
+  background-image:
+    radial-gradient(circle at 10% 90%, #1f9d6a55, transparent 45%),
+    radial-gradient(circle at 90% 10%, #ff9f4333, transparent 40%);
+}
+:root[data-theme='hero'] body {
+  background-image: repeating-linear-gradient(
+    135deg,
+    #ffffff05 0 14px,
+    transparent 14px 28px
+  );
+}
+
 @layer base {
   * {
     @apply border-border;

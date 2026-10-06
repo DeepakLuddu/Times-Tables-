@@ -22,6 +22,9 @@ export interface Question {
   answer: number
   options: number[] // 4 options, shuffled, includes the answer
   factKey: string
+  // Ask for a typed answer instead of multiple choice (set server-side for
+  // facts that are already secure — see lib/spacing.ts).
+  typed?: boolean
 }
 
 export interface FactStat {
@@ -136,12 +139,17 @@ function shuffle<T>(arr: T[]): T[] {
 export function pickWeightedFact(
   stats: Map<string, FactStat>,
   exclude?: Set<string>,
+  weightFn?: (key: string, stat: FactStat | undefined) => number,
 ): [number, number] {
   const pool = exclude
     ? ALL_FACTS.filter(([x, y]) => !exclude.has(`${x}x${y}`))
     : ALL_FACTS
   const facts = pool.length > 0 ? pool : ALL_FACTS
-  const weights = facts.map(([x, y]) => weightForFact(stats.get(`${x}x${y}`)))
+  const weights = facts.map(([x, y]) => {
+    const key = `${x}x${y}`
+    const stat = stats.get(key)
+    return weightFn ? weightFn(key, stat) : weightForFact(stat)
+  })
   const total = weights.reduce((s, w) => s + w, 0)
   let r = Math.random() * total
   for (let i = 0; i < facts.length; i++) {

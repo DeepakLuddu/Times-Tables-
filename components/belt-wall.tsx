@@ -1,7 +1,8 @@
 "use client"
 
 import { type BeltWallData, getBeltWallData } from "@/app/actions/dojo"
-import { Belt } from "@/components/belt"
+import { RankMark } from "@/components/rank-mark"
+import { useTheme } from "@/components/theme-provider"
 import { BeltDetail } from "@/components/belt-detail"
 import { BeltJourney } from "@/components/belt-journey"
 import { AnimatedPercentLabel, MasteryBar } from "@/components/mastery-bar"
@@ -34,6 +35,7 @@ function BeltCard({
   mastery: TableMastery
   onTap: () => void
 }) {
+  const { localize } = useTheme()
   const isChallengeReady = mastery.state === "challengeReady"
   const isMastered = mastery.state === "mastered"
 
@@ -47,7 +49,7 @@ function BeltCard({
         <span className="font-mono text-2xl font-bold text-white">
           {mastery.table}
         </span>
-        <Belt tier="black" className="h-6 w-14" />
+        <RankMark tier="black" className="h-6 w-14" size="md" />
         <span className="mt-1 font-mono text-xs font-bold text-primary">
           100%
         </span>
@@ -65,10 +67,11 @@ function BeltCard({
       className="flex flex-col items-center gap-1.5 rounded-2xl bg-card px-3 py-4 text-card-foreground shadow-md transition-transform active:scale-95"
     >
       <span className="font-mono text-2xl font-bold">{mastery.table}</span>
-      <Belt
+      <RankMark
         tier={mastery.belt}
         locked={isChallengeReady}
         className="h-6 w-14"
+        size="md"
       />
       {!isChallengeReady && (
         <>
@@ -91,7 +94,7 @@ function BeltCard({
             : "text-card-foreground/50",
         )}
       >
-        {mastery.stateLabel}
+        {localize(mastery.stateLabel)}
       </span>
     </button>
   )
@@ -101,6 +104,7 @@ export function BeltWall() {
   const [data, setData] = useState<BeltWallData | null>(null)
   const [selected, setSelected] = useState<TableMastery | null>(null)
   const [playerId, setPlayerId] = useState("")
+  const { theme } = useTheme()
 
   useEffect(() => {
     const pid = getPlayerId()
@@ -122,13 +126,13 @@ export function BeltWall() {
           <House className="size-5" />
         </Link>
         <h1 className="font-display text-3xl font-bold text-primary">
-          Belt Wall
+          {theme.wallName}
         </h1>
       </div>
 
       {!data ? (
         <p className="mt-16 text-center font-display text-lg text-foreground/50">
-          Loading your belts…
+          {theme.wallLoading}
         </p>
       ) : (
         <>

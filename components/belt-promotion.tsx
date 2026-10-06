@@ -1,7 +1,9 @@
 "use client"
 
-import { Belt } from "@/components/belt"
-import { BELT_LABEL, type Belt as BeltTier } from "@/lib/engine"
+import { RankMark } from "@/components/rank-mark"
+import { useTheme } from "@/components/theme-provider"
+import type { Belt as BeltTier } from "@/lib/engine"
+import { rankName } from "@/lib/themes"
 import { cn } from "@/lib/utils"
 import { useMemo } from "react"
 
@@ -29,6 +31,8 @@ export function BeltPromotion({
   // for it separately). It's the biggest achievement in the app, so it
   // gets a visibly bigger celebration than every other belt.
   const isBlackBelt = belt === "black"
+  const { theme } = useTheme()
+  const fullName = rankName(theme, belt)
   const confettiCount = isBlackBelt ? 48 : 28
 
   // Deterministic-enough confetti generated once per mount.
@@ -49,8 +53,8 @@ export function BeltPromotion({
       aria-modal="true"
       aria-label={
         isBlackBelt
-          ? `Black Belt earned in the ${table} times table — fully mastered`
-          : `New belt earned: ${BELT_LABEL[belt]} belt in the ${table} times table`
+          ? `${fullName} earned in the ${table} times table — fully mastered`
+          : `New ${theme.rankNoun.toLowerCase()} earned: ${fullName} in the ${table} times table`
       }
       className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-background/85 px-6 backdrop-blur-sm"
     >
@@ -101,16 +105,16 @@ export function BeltPromotion({
             <span className="font-mono text-5xl font-bold text-card-foreground">
               {table}
             </span>
-            <Belt tier={belt} className="h-5 w-24" />
+            <RankMark tier={belt} className="h-5 w-24" size="lg" />
           </div>
         </div>
 
         <div className="animate-badge-rise mt-8 flex flex-col items-center">
           <p className="font-display text-sm font-semibold uppercase tracking-widest text-primary">
-            {isBlackBelt ? "Belt Challenge passed!" : "New belt earned"}
+            {isBlackBelt ? `${theme.challenge} passed!` : `New ${theme.rankNoun.toLowerCase()} earned`}
           </p>
           <h2 className="mt-1 text-balance font-display text-4xl font-bold text-foreground">
-            {BELT_LABEL[belt]} Belt
+            {fullName}
           </h2>
           <p className="mt-2 text-balance font-sans text-base text-foreground/70">
             {isBlackBelt

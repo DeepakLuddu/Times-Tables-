@@ -8,6 +8,7 @@ import {
 } from "@/lib/db/schema"
 import {
   type Attempt,
+  type FactStat,
   type Mode,
   type Question,
   type TableStat,
@@ -39,6 +40,7 @@ import {
   crossedMultiple,
 } from "@/lib/piggybank"
 import { type DetailedSession, buildSessionLog } from "@/lib/session-log"
+import { computeSchedules, isTypedFact, spacedWeight } from "@/lib/spacing"
 import { eq } from "drizzle-orm"
 
 async function loadWithdrawals(playerId: string): Promise<WithdrawalEntry[]> {
@@ -226,19 +228,30 @@ export async function getQuestions(
     if (summaries.length > 0) forced = summaries[0].troubleFacts
   }
 
+  // Spaced schedule: which facts are due, and which are secure enough to be
+  // asked as a typed answer (see lib/spacing.ts).
+  const schedules = computeSchedules(attempts)
+  const now = Date.now()
+  const weightFn = (key: string, stat: FactStat | undefined) =>
+    spacedWeight(stat, schedules.get(key), now)
+
   const questions: Question[] = []
   const forcedPositions: Record<number, TroubleFact | undefined> = {
     0: forced[0],
     2: forced[1],
   }
 
+  let prevKey = ""
   for (let i = 0; i < count; i++) {
     const forcedFact = isFirstBatch ? forcedPositions[i] : undefined
-    if (forcedFact) {
-      questions.push(makeQuestion(normalizeFact(forcedFact.a, forcedFact.b)))
-    } else {
-      questions.push(makeQuestion(pickWeightedFact(stats)))
-    }
+    const fact = forcedFact
+      ? normalizeFact(forcedFact.a, forcedFact.b)
+      : // Never the same fact twice in a row.
+        pickWeightedFact(stats, new Set([prevKey]), weightFn)
+    const q = makeQuestion(fact)
+    q.typed = isTypedFact(schedules.get(q.factKey))
+    prevKey = q.factKey
+    questions.push(q)
   }
   return questions
 }

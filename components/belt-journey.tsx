@@ -1,4 +1,5 @@
-import { Belt } from "@/components/belt"
+import { RankMark } from "@/components/rank-mark"
+import { useTheme } from "@/components/theme-provider"
 import { BELT_THRESHOLDS } from "@/lib/mastery"
 import { BELT_LABEL } from "@/lib/engine"
 
@@ -9,10 +10,11 @@ import { BELT_LABEL } from "@/lib/engine"
 // so there's no single "current belt" to point at here) — it just makes
 // the progression system itself easy to read in one glance.
 export function BeltJourney() {
+  const { theme } = useTheme()
   return (
     <section className="mt-5 rounded-2xl bg-card px-4 py-3 shadow-sm">
       <p className="font-display text-xs font-semibold uppercase tracking-wide text-card-foreground/50">
-        Your Belt Journey
+        {theme.journeyTitle}
       </p>
       <div className="mt-2 flex items-end justify-between gap-1">
         {BELT_THRESHOLDS.map((t, i) => (
@@ -20,9 +22,9 @@ export function BeltJourney() {
             key={t.belt}
             className="flex flex-1 flex-col items-center gap-1"
           >
-            <Belt tier={t.belt} className="h-2.5 w-full" />
+            <RankMark tier={t.belt} className="h-2.5 w-full" size="sm" />
             <span className="text-center font-sans text-[9px] font-medium leading-tight text-card-foreground/60">
-              {BELT_LABEL[t.belt]}
+              {theme.id === "ninja" ? BELT_LABEL[t.belt] : theme.ranks[t.belt]}
               {i === BELT_THRESHOLDS.length - 1 && (
                 <>
                   <br />

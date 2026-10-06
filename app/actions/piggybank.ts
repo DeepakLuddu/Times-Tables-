@@ -79,16 +79,33 @@ export async function addPracticeTime(
     Math.min(Math.round(deltaSeconds), MAX_DELTA_SECONDS),
   )
   if (clamped > 0) {
-    await db
-      .insert(practiceTimeTable)
-      .values({ playerId, date: dateKey, activeSeconds: clamped })
-      .onConflictDoUpdate({
-        target: [practiceTimeTable.playerId, practiceTimeTable.date],
-        set: {
+    // Update-then-insert rather than ON CONFLICT (playerId, date): databases
+    // that once ran the multi-subject migration have a (playerId, date,
+    // subject) primary key, and an ON CONFLICT target that doesn't match the
+    // real constraint fails outright. This works with either shape.
+    const bump = () =>
+      db
+        .update(practiceTimeTable)
+        .set({
           activeSeconds: sql`${practiceTimeTable.activeSeconds} + ${clamped}`,
           updatedAt: new Date(),
-        },
-      })
+        })
+        .where(
+          and(
+            eq(practiceTimeTable.playerId, playerId),
+            eq(practiceTimeTable.date, dateKey),
+          ),
+        )
+        .returning({ playerId: practiceTimeTable.playerId })
+    if ((await bump()).length === 0) {
+      const inserted = await db
+        .insert(practiceTimeTable)
+        .values({ playerId, date: dateKey, activeSeconds: clamped })
+        .onConflictDoNothing()
+        .returning({ playerId: practiceTimeTable.playerId })
+      // Lost a race with another flush for the same day — add to that row.
+      if (inserted.length === 0) await bump()
+    }
   }
   const row = await db
     .select()
