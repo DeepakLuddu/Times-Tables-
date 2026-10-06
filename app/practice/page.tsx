@@ -1,5 +1,5 @@
-import { SubjectPicker } from "@/components/subject-picker"
+import { GameBoard } from "@/components/game-board"
 
 export default function PracticePage() {
-  return <SubjectPicker mode="practice" />
+  return <GameBoard mode="practice" />
 }

@@ -14,10 +14,14 @@
 // (which can be lower than denominator — e.g. recent accuracy needs 19 of
 // the last 20, not a perfect 20/20).
 
-import type { Attempt, Belt } from "./engine"
-import { BELT_LABEL } from "./engine"
-import { computeFactStatsFor } from "./subjects/shared"
-import type { Subject, SubjectEngine } from "./subjects/types"
+import {
+  type Attempt,
+  type Belt,
+  BELT_LABEL,
+  computeFactStats,
+  factKey,
+  normalizeFact,
+} from "./engine"
 
 export const VOLUME_REQUIRED = 75
 export const RECENT_WINDOW = 20
@@ -98,9 +102,7 @@ function nextBeltInfo(
 }
 
 export interface TableMastery {
-  /** Generic "skill index 1-12 within subject" — a times table, a divisor, or a band. */
   table: number
-  subject: Subject
   percent: number // 0-95, or 99, or 100 — never anything in between 96-98
   belt: Belt
   state: MasteryState
@@ -124,21 +126,15 @@ function dayKeyUTC(d: Date): string {
   return d.toISOString().slice(0, 10)
 }
 
+// Every table pairs with partners 1-12 (the 12 facts that make up a table).
+const ALL_PARTNERS = Array.from({ length: 12 }, (_, i) => i + 1)
+
 function buildComponents(
-  engine: SubjectEngine,
   table: number,
   allAttempts: Attempt[],
 ): { components: MasteryComponent[]; requiredMap: Record<MasteryKey, number> } {
   const tableAttempts = allAttempts
-    .filter((a) =>
-      engine
-        .skillsForAttempt({
-          factorA: a.factorA,
-          factorB: a.factorB,
-          bandIndex: a.bandIndex ?? null,
-        })
-        .includes(table),
-    )
+    .filter((a) => a.factorA === table || a.factorB === table)
     .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
   const total = tableAttempts.length
 
@@ -150,12 +146,13 @@ function buildComponents(
   const longSlice = tableAttempts.slice(-LONGTERM_WINDOW)
   const longCorrect = longSlice.filter((a) => a.correct).length
 
-  const factStats = computeFactStatsFor(engine, allAttempts)
-  const facts = engine.factUniverse(table)
+  const factStats = computeFactStats(allAttempts)
+  const partners = ALL_PARTNERS
   let coveredFacts = 0
   let weakClearFacts = 0
-  for (const [x, y] of facts) {
-    const stat = factStats.get(engine.factKey(x, y))
+  for (const p of partners) {
+    const [x, y] = normalizeFact(table, p)
+    const stat = factStats.get(factKey(x, y))
     const correctCount = stat?.correct ?? 0
     if (correctCount >= DEMOS_PER_FACT) coveredFacts++
     const isWeak = stat
@@ -165,7 +162,6 @@ function buildComponents(
       : false
     if (!isWeak) weakClearFacts++
   }
-  const factCount = facts.length
 
   const fluencySlice = tableAttempts.slice(-FLUENCY_WINDOW)
   const fluencyCount = fluencySlice.filter(
@@ -208,17 +204,17 @@ function buildComponents(
       key: "factCoverage",
       label: "Fact mastery",
       numerator: coveredFacts,
-      denominator: factCount,
+      denominator: 12,
       weight: 15,
-      complete: coveredFacts === factCount,
+      complete: coveredFacts === 12,
     },
     {
       key: "weakFactsEliminated",
       label: "Weak facts cleared",
       numerator: weakClearFacts,
-      denominator: factCount,
+      denominator: 12,
       weight: 10,
-      complete: weakClearFacts === factCount,
+      complete: weakClearFacts === 12,
     },
     {
       key: "fluency",
@@ -250,8 +246,8 @@ function buildComponents(
     volume: VOLUME_REQUIRED,
     recentAccuracy: RECENT_REQUIRED,
     longTermAccuracy: LONGTERM_REQUIRED,
-    factCoverage: factCount,
-    weakFactsEliminated: factCount,
+    factCoverage: 12,
+    weakFactsEliminated: 12,
     fluency: FLUENCY_REQUIRED,
     sessions: SESSIONS_REQUIRED,
     daysSpread: DAYS_REQUIRED,
@@ -261,7 +257,6 @@ function buildComponents(
 }
 
 function buildRecommendation(
-  engine: SubjectEngine,
   table: number,
   allAttempts: Attempt[],
   mastered: boolean,
@@ -269,9 +264,11 @@ function buildRecommendation(
   if (mastered) {
     return "Fully mastered — keep it sharp with the occasional review."
   }
-  const factStats = computeFactStatsFor(engine, allAttempts)
-  const scored = engine.factUniverse(table).map(([x, y]) => {
-    const stat = factStats.get(engine.factKey(x, y))
+  const factStats = computeFactStats(allAttempts)
+  const partners = ALL_PARTNERS
+  const scored = partners.map((p) => {
+    const [x, y] = normalizeFact(table, p)
+    const stat = factStats.get(factKey(x, y))
     const correct = stat?.correct ?? 0
     const weak = stat
       ? stat.recentMisses > 0 ||
@@ -291,7 +288,7 @@ function buildRecommendation(
     return "Great work — every fact in this table is solid. Keep the streak going."
   }
   const picks = priority.slice(0, 2)
-  const label = picks.map((p) => engine.formatFact(p.a, p.b)).join(" and ")
+  const label = picks.map((p) => `${p.a} × ${p.b}`).join(" and ")
   return `Next goal: practise ${label}`
 }
 
@@ -300,17 +297,15 @@ function buildRecommendation(
 // non-null, this always returns 100% / mastered regardless of what the
 // live components say.
 export function computeTableMastery(
-  engine: SubjectEngine,
   table: number,
   allAttempts: Attempt[],
   awardedAt: Date | null,
 ): TableMastery {
-  const { components, requiredMap } = buildComponents(engine, table, allAttempts)
+  const { components, requiredMap } = buildComponents(table, allAttempts)
 
   if (awardedAt) {
     return {
       table,
-      subject: engine.id,
       percent: 100,
       belt: "black",
       state: "mastered",
@@ -319,7 +314,7 @@ export function computeTableMastery(
       percentToNext: null,
       mastered: true,
       components,
-      recommendation: buildRecommendation(engine, table, allAttempts, true),
+      recommendation: buildRecommendation(table, allAttempts, true),
     }
   }
 
@@ -338,7 +333,6 @@ export function computeTableMastery(
   if (percent >= 99) {
     return {
       table,
-      subject: engine.id,
       percent,
       belt,
       state: "challengeReady",
@@ -347,7 +341,7 @@ export function computeTableMastery(
       percentToNext: null,
       mastered: false,
       components,
-      recommendation: buildRecommendation(engine, table, allAttempts, false),
+      recommendation: buildRecommendation(table, allAttempts, false),
     }
   }
 
@@ -358,7 +352,6 @@ export function computeTableMastery(
 
   return {
     table,
-    subject: engine.id,
     percent,
     belt,
     state: "progress",
@@ -367,6 +360,6 @@ export function computeTableMastery(
     percentToNext: next?.percentNeeded ?? null,
     mastered: false,
     components,
-    recommendation: buildRecommendation(engine, table, allAttempts, false),
+    recommendation: buildRecommendation(table, allAttempts, false),
   }
 }
