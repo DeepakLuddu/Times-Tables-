@@ -9,13 +9,6 @@ import {
 } from "@/components/answer-celebration"
 import { BeltPromotion } from "@/components/belt-promotion"
 import { FactVisuals } from "@/components/fact-visuals"
-import { AdditionHelp } from "@/components/help/AdditionHelp"
-import { DivisionHelp } from "@/components/help/DivisionHelp"
-import { HelpChooser } from "@/components/help/HelpChooser"
-import { SubtractionHelp } from "@/components/help/SubtractionHelp"
-import { buildAdditionHelp } from "@/lib/help/addition-help"
-import { buildDivisionHelp } from "@/lib/help/division-help"
-import { buildSubtractionHelp } from "@/lib/help/subtraction-help"
 import { PersonalBestCelebration } from "@/components/personal-best-celebration"
 import { DAILY_GOAL_SECONDS, PiggyBank } from "@/components/piggy-bank"
 import {
@@ -34,12 +27,7 @@ import {
   localDateKey,
 } from "@/lib/piggybank"
 import { getSubjectEngine } from "@/lib/subjects"
-import type {
-  HelpMethod,
-  PracticeSubject,
-  Subject,
-  SubjectQuestion,
-} from "@/lib/subjects/types"
+import type { PracticeSubject, Subject, SubjectQuestion } from "@/lib/subjects/types"
 import { cn } from "@/lib/utils"
 import { Flame, House } from "lucide-react"
 import Link from "next/link"
@@ -66,26 +54,6 @@ const MILESTONE_FLASH_MS = 900
 const IDLE_MS = 30_000
 // How often accumulated active seconds get persisted to the server.
 const PRACTICE_FLUSH_MS = 8_000
-
-// Subjects with a wrong-answer "See it / Move it / Think it" teaching flow
-// (components/help/) — multiplication keeps its separate, untouched
-// FactVisuals experience. Extend hasHelpFlow/renderHelpWidget/
-// recommendedHelpMethod together as each subject's widget is built.
-function hasHelpFlow(subject: Subject): boolean {
-  return subject === "addition" || subject === "subtraction" || subject === "division"
-}
-
-function recommendedHelpMethod(
-  subject: Subject,
-  a: number,
-  b: number,
-  bandIndex?: number,
-): HelpMethod | null {
-  if (subject === "addition") return buildAdditionHelp(a, b).recommended
-  if (subject === "subtraction") return buildSubtractionHelp(a, b, bandIndex).recommended
-  if (subject === "division") return buildDivisionHelp(a, b).recommended
-  return null
-}
 
 const EMPTY_WEEKLY_BREAKDOWN: WeeklyEarningsBucket = {
   bySubjectCents: { multiplication: 0, division: 0, addition: 0, subtraction: 0 },
@@ -122,24 +90,8 @@ export function GameBoard({
   const [status, setStatus] = useState<Status>("idle")
   const [chosen, setChosen] = useState<number | null>(null)
   // After a wrong answer we pause and show pickable visuals; the kid taps to
-  // continue when they're ready. Multiplication-only (FactVisuals).
+  // continue when they're ready.
   const [reviewing, setReviewing] = useState(false)
-  // The "See it / Move it / Think it" teaching flow for Addition/
-  // Subtraction/Division — a separate state machine from `reviewing`.
-  // "closed": normal idle/correct/wrong flow. "choosing": the method
-  // picker is shown. "teaching": the chosen method's interactive widget is
-  // shown. Retry itself isn't a distinct stage — once the widget's one
-  // required step is solved, helpStage goes straight back to "closed" and
-  // the same question (idx unchanged) becomes answerable again.
-  const [helpStage, setHelpStage] = useState<"closed" | "choosing" | "teaching">(
-    "closed",
-  )
-  // Which method the child picked — kept set through the retry tap itself
-  // (only advance() clears it) so recordAttempt can tag the retry attempt
-  // with it. Also doubles as "have we already had one help round for this
-  // question" (a wrong retry falls back to the plain highlight-and-advance
-  // instead of reopening the chooser — one round only, see handleAnswer).
-  const [helpMethod, setHelpMethod] = useState<HelpMethod | null>(null)
   const [streak, setStreak] = useState(0)
   const [answered, setAnswered] = useState(0)
   const [correctCount, setCorrectCount] = useState(0)
@@ -199,8 +151,6 @@ export function GameBoard({
     setStatus("idle")
     setChosen(null)
     setReviewing(false)
-    setHelpStage("closed")
-    setHelpMethod(null)
     setStreak(0)
     setAnswered(0)
     setCorrectCount(0)
@@ -282,18 +232,15 @@ export function GameBoard({
   }, [playerId])
 
   // Sprint countdown starts once the first question is on screen. It pauses
-  // while a belt promotion celebration OR a wrong-answer teaching moment
-  // (multiplication's FactVisuals, or the new See it/Move it/Think it flow)
-  // is on screen, so exploring them never burns the kid's time — a teaching
-  // moment shouldn't race a timer in any mode.
+  // while a belt promotion celebration OR the wrong-answer visuals are on
+  // screen so exploring them never burns the kid's time.
   useEffect(() => {
     if (
       mode !== "sprint" ||
       finished ||
       questions.length === 0 ||
       promotion ||
-      reviewing ||
-      helpStage !== "closed"
+      reviewing
     )
       return
     if (timeLeft <= 0) {
@@ -302,7 +249,7 @@ export function GameBoard({
     }
     const t = setTimeout(() => setTimeLeft((s) => s - 1), 1000)
     return () => clearTimeout(t)
-  }, [mode, finished, timeLeft, questions.length, promotion, reviewing, helpStage])
+  }, [mode, finished, timeLeft, questions.length, promotion, reviewing])
 
   const current = questions[idx]
 
@@ -310,11 +257,6 @@ export function GameBoard({
   useEffect(() => {
     questionShownAtRef.current = Date.now()
   }, [idx])
-
-  // Guards against a wrong-tap-then-retry-tap pair (two handleAnswer calls
-  // for the same idx, once the help flow is in play) triggering the same
-  // prefetch boundary twice.
-  const loadMoreTriggeredForIdxRef = useRef(-1)
 
   const loadMore = useCallback(async () => {
     if (fetchingRef.current || !playerId) return
@@ -328,23 +270,9 @@ export function GameBoard({
     setStatus("idle")
     setChosen(null)
     setReviewing(false)
-    setHelpStage("closed")
-    setHelpMethod(null)
     setCelebration(null)
     setPiggyCelebration(null)
     setIdx((i) => i + 1)
-  }, [])
-
-  // Re-arms the exact same question (idx unchanged, so `current` — same
-  // a/b/options/questionKind — is reused as-is) after the child completes
-  // the one required step in a help widget. helpMethod is deliberately
-  // NOT cleared here: the upcoming retry tap's recordAttempt call still
-  // needs to read it, so it stays set until advance() genuinely moves on.
-  const retrySameQuestion = useCallback(() => {
-    setStatus("idle")
-    setChosen(null)
-    setHelpStage("closed")
-    questionShownAtRef.current = Date.now()
   }, [])
 
   function handleAnswer(option: number, buttonEl: HTMLButtonElement | null) {
@@ -429,18 +357,9 @@ export function GameBoard({
         // FactVisuals only has a mnemonic/array visual for subjects whose
         // engine provides explainFact (currently just multiplication).
         setReviewing(true)
-      } else if (helpMethod !== null) {
-        // This is the retry (helpMethod is only set once a method has been
-        // chosen) and it's STILL wrong — one help round only (per design:
-        // "keep explanations short," and the adaptive engine already
-        // resurfaces anything still shaky). Fall back to the plain
-        // highlight-and-advance rather than reopening the chooser.
-        window.setTimeout(advance, WRONG_ANSWER_PAUSE_MS)
-      } else if (hasHelpFlow(questionSubject)) {
-        // First wrong answer on a subject with a teaching flow — offer it
-        // instead of just revealing the answer.
-        setHelpStage("choosing")
       } else {
+        // Other subjects don't have a wrong-answer visual yet: just leave
+        // the correct answer highlighted for a beat, then move on.
         window.setTimeout(advance, WRONG_ANSWER_PAUSE_MS)
       }
     }
@@ -458,7 +377,6 @@ export function GameBoard({
       bandIndex: current.bandIndex,
       questionKind: current.questionKind,
       blankSlot: current.blankSlot,
-      helpMethod: helpMethod ?? undefined,
     }).then((res) => {
       if (res.promotions.length > 0) {
         setPromoQueue((q) => [...q, ...res.promotions])
@@ -476,10 +394,7 @@ export function GameBoard({
       }
     })
 
-    if (idx >= questions.length - 3 && loadMoreTriggeredForIdxRef.current !== idx) {
-      loadMoreTriggeredForIdxRef.current = idx
-      void loadMore()
-    }
+    if (idx >= questions.length - 3) void loadMore()
 
     // Correct answers keep the quick pop + auto-advance (a beat longer at
     // streak or Piggy Bank milestones so the banner is readable). Wrong
@@ -656,13 +571,6 @@ export function GameBoard({
         />
       </div>
 
-      {/* "Now try it again" — shown only in the brief post-help retry window */}
-      {helpMethod !== null && helpStage === "closed" && status === "idle" && (
-        <p className="mt-3 text-center font-display text-base font-semibold text-primary">
-          Now try it again
-        </p>
-      )}
-
       {/* Equation */}
       <div className="flex flex-1 flex-col items-center justify-center">
         {current.questionKind === "missingOperand" ? (
@@ -705,17 +613,13 @@ export function GameBoard({
         {current.options.map((opt) => {
           const isChosen = chosen === opt
           const isAnswer = opt === current.answer
-          // Suppressed while a help interaction is open: revealing the
-          // correct button here would let the retry be "solved" by memory
-          // of the highlight rather than the teaching step, defeating the
-          // whole point of the flow.
-          const showCorrect = status !== "idle" && helpStage === "closed" && isAnswer
-          const showWrong = status === "wrong" && helpStage === "closed" && isChosen
+          const showCorrect = status !== "idle" && isAnswer
+          const showWrong = status === "wrong" && isChosen
           return (
             <button
               key={opt}
               type="button"
-              disabled={status !== "idle" || helpStage !== "closed"}
+              disabled={status !== "idle"}
               onClick={(e) => handleAnswer(opt, e.currentTarget)}
               className={cn(
                 "flex h-24 items-center justify-center rounded-2xl font-mono text-4xl font-bold shadow-md transition-all active:scale-95 sm:h-28",
@@ -731,7 +635,7 @@ export function GameBoard({
         })}
       </div>
 
-      {/* Pickable visuals after a wrong answer — multiplication only */}
+      {/* Pickable visuals after a wrong answer */}
       {reviewing && (
         <FactVisuals
           key={`${current.a}x${current.b}`}
@@ -741,53 +645,7 @@ export function GameBoard({
         />
       )}
 
-      {/* "See it / Move it / Think it" wrong-answer teaching flow —
-          Addition/Subtraction/Division (see hasHelpFlow) */}
-      {helpStage === "choosing" && (
-        <HelpChooser
-          recommended={recommendedHelpMethod(
-            current.subject,
-            current.a,
-            current.b,
-            current.bandIndex,
-          )}
-          onChoose={(method) => {
-            setHelpMethod(method)
-            setHelpStage("teaching")
-          }}
-        />
-      )}
-      {helpStage === "teaching" && helpMethod && current.subject === "addition" && (
-        <AdditionHelp
-          key={`${helpMethod}-${current.a}-${current.b}`}
-          a={current.a}
-          b={current.b}
-          method={helpMethod}
-          onSolved={retrySameQuestion}
-        />
-      )}
-      {helpStage === "teaching" && helpMethod && current.subject === "subtraction" && (
-        <SubtractionHelp
-          key={`${helpMethod}-${current.a}-${current.b}`}
-          a={current.a}
-          b={current.b}
-          bandIndex={current.bandIndex}
-          method={helpMethod}
-          onSolved={retrySameQuestion}
-        />
-      )}
-      {helpStage === "teaching" && helpMethod && current.subject === "division" && (
-        <DivisionHelp
-          key={`${helpMethod}-${current.a}-${current.b}`}
-          a={current.a}
-          b={current.b}
-          playerId={playerId}
-          method={helpMethod}
-          onSolved={retrySameQuestion}
-        />
-      )}
-
-      {mode === "practice" && !reviewing && helpStage === "closed" && (
+      {mode === "practice" && !reviewing && (
         <p className="pb-2 text-center font-sans text-sm text-foreground/40">
           {answered} answered · keep the streak going
         </p>
