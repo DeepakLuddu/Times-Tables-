@@ -37,6 +37,8 @@ export interface Theme {
   wallBlurb: string
   wallLoading: string
   journeyTitle: string
+  /** How the journey path line is drawn. */
+  pathLine: "solid" | "dashed" | "dotted"
   /** The final-test equivalent of the Belt Challenge. */
   challenge: string
   /** Colours for the chooser preview swatch (background, accent). */
@@ -68,6 +70,7 @@ export const THEMES: Record<ThemeId, Theme> = {
     wallBlurb: "See your belts and what to work on next.",
     wallLoading: "Loading your belts…",
     journeyTitle: "Your Belt Journey",
+    pathLine: "solid",
     challenge: "Belt Challenge",
     swatch: ["#1b2340", "#e8a93b"],
   },
@@ -88,6 +91,7 @@ export const THEMES: Record<ThemeId, Theme> = {
     wallBlurb: "See your ranks and your next mission.",
     wallLoading: "Scanning your ranks…",
     journeyTitle: "Your Mission Journey",
+    pathLine: "dashed",
     challenge: "Star Mission",
     swatch: ["#0b1026", "#5ee6ff"],
   },
@@ -108,6 +112,7 @@ export const THEMES: Record<ThemeId, Theme> = {
     wallBlurb: "See what you've built and what to build next.",
     wallLoading: "Loading your builds…",
     journeyTitle: "Your Build Journey",
+    pathLine: "solid",
     challenge: "Master Build",
     swatch: ["#1e2b22", "#ffb020"],
   },
@@ -128,6 +133,7 @@ export const THEMES: Record<ThemeId, Theme> = {
     wallBlurb: "See your spells and what to learn next.",
     wallLoading: "Opening your spellbook…",
     journeyTitle: "Your Magic Journey",
+    pathLine: "dotted",
     challenge: "Wizard Trial",
     swatch: ["#241338", "#ffd36e"],
   },
@@ -148,6 +154,7 @@ export const THEMES: Record<ThemeId, Theme> = {
     wallBlurb: "See your badges and who to meet next.",
     wallLoading: "Finding your badges…",
     journeyTitle: "Your Adventure Journey",
+    pathLine: "dotted",
     challenge: "Legend Quest",
     swatch: ["#12332f", "#ff9f43"],
   },
@@ -168,6 +175,7 @@ export const THEMES: Record<ThemeId, Theme> = {
     wallBlurb: "See your ranks and your next mission.",
     wallLoading: "Loading your hero ranks…",
     journeyTitle: "Your Hero Journey",
+    pathLine: "solid",
     challenge: "Hero Trial",
     swatch: ["#1f0f16", "#ffcf26"],
   },

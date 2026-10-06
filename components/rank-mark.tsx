@@ -29,6 +29,7 @@ export function RankMark({
   locked,
   className,
   size = "md",
+  medallion,
 }: {
   tier: BeltTier
   locked?: boolean
@@ -36,9 +37,11 @@ export function RankMark({
   className?: string
   /** Medallion size in every other world. */
   size?: "sm" | "md" | "lg"
+  /** Always draw the round medallion (used on the journey path, even in Ninja). */
+  medallion?: boolean
 }) {
   const { theme } = useTheme()
-  if (theme.id === "ninja") {
+  if (theme.id === "ninja" && !medallion) {
     return <Belt tier={tier} locked={locked} className={className} />
   }
   return (

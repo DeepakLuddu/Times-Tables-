@@ -136,7 +136,7 @@ export function BeltWall() {
         </p>
       ) : (
         <>
-          <BeltJourney />
+          <BeltJourney tables={data.mastery} />
 
           {/* Belt grid */}
           <div className="mt-4 grid grid-cols-3 gap-3 sm:grid-cols-4">
